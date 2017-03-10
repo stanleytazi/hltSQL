@@ -23,6 +23,8 @@ void emit(char *s, ...);
 	char *strval;
 	int subtok;
 	attr_node_header_t *attr_node;
+	create_table_node_t *table_node;
+	stmt_node_t *stmt_node;
 }
 	
 	/* names and literal values */
@@ -295,6 +297,7 @@ void emit(char *s, ...);
 %type <intval> opt_temporary opt_length opt_binary opt_uz enum_list
 %type <intval> column_atts data_type opt_ignore_replace 
 %type <attr_node> create_definition create_col_list
+%type <table_node> create_table_stmt
 %start stmt_list
 
 %%
@@ -627,12 +630,12 @@ opt_if_not_exists:  /* nil */ { $$ = 0; }
 
 
    /** create table **/
-stmt: create_table_stmt { emit("STMT"); }
+stmt: create_table_stmt { sql_handle_table($1);emit("STMT"); }
    ;
 
 create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME
    '(' create_col_list ')' 
-   { emit("CREATE %d %d %s", $2, $4, $5); free($5); }
+   { $$ = sql_create_table($5, $7); emit("CREATE %d %d %s", $2, $4, $5); free($5); }
    ;
 
 create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME '.' NAME
@@ -714,7 +717,7 @@ data_type:
    | SMALLINT opt_length opt_uz { $$ = 20000 + $2 + $3; }
    | MEDIUMINT opt_length opt_uz { $$ = 30000 + $2 + $3; }
    | INT opt_length opt_uz { $$ = 40000 + $2 + $3; }
-   | INTEGER opt_length opt_uz { $$ = 50000 + $2 + $3; }
+   | INTEGER opt_length opt_uz { $$ = DATA_TYPE_INT;}
    | BIGINT opt_length opt_uz { $$ = 60000 + $2 + $3; }
    | REAL opt_length opt_uz { $$ = 70000 + $2 + $3; }
    | DOUBLE opt_length opt_uz { $$ = 80000 + $2 + $3; }
@@ -726,7 +729,7 @@ data_type:
    | DATETIME { $$ = 100004; }
    | YEAR { $$ = 100005; }
    | CHAR opt_length opt_csc { $$ = 120000 + $2; }
-   | VARCHAR '(' INTNUM ')' opt_csc { $$ = 130000 + $3; }
+   | VARCHAR '(' INTNUM ')' opt_csc { $$ = DATA_TYPE_VARCHAR + $3;}
    | BINARY opt_length { $$ = 140000 + $2; }
    | VARBINARY '(' INTNUM ')' { $$ = 150000 + $3; }
    | TINYBLOB { $$ = 160001; }

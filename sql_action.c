@@ -1,10 +1,61 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "node.h"
-int sql_create_table(char *table_name) 
+
+
+void sql_handle_table (create_table_node_t *table) 
 {
-    return 0;   
-   //{ emit("CREATE %d %d %d %s", $2, $4, $7, $5); free($5); }
+    int num  = 0;
+    attr_node_header_t *node = NULL;
+    printf("============\n");
+    if (table) {
+        printf("table name : %s\n", table->table_name);
+        printf("\t\tattr number : %d\n", table->attr_num);
+        while (num < table->attr_num) {
+            node = table->attr[num]->header;
+            printf("attr name=%s, dataType=%d, varLen=%d\n", node->name, node->data_type, node->varchar_len);
+            num++;
+        }
+    }
+    printf("============\n");
+}
+stmt_node_t *sql_create_stmt(stmt_type_e stmt_type, void *parsed_stmt)
+{
+    return NULL;
+}
+char *sql_create_attr_varchar(int len)                   
+{                                                        
+    if (len <= 0)
+        printf("the length varchar should be larger than zero\n");
+    char *varchar_attr = (char *) malloc(sizeof(char)*len);
+    return varchar_attr;                                 
+}
+
+create_table_node_t *sql_create_table(char *table_name, attr_node_header_t *attr_list) 
+{
+    int attr_num = 0;
+    attr_node_header_t *node = attr_list;
+    create_table_node_t *table = (create_table_node_t *) malloc(sizeof(create_table_node_t));  
+    if (!table) {
+        printf("fail to allocate space for table creation\n");
+        return NULL;
+    }
+    table->table_name = strdup(table_name);
+    if (!table->table_name) {
+        return NULL;
+    }
+    while (node) {
+        table->attr[attr_num] = (attr_node_t *) malloc(sizeof(attr_node_t));
+        if ( !table->attr[attr_num])
+            return NULL;
+        table->attr[attr_num]->header = node;
+        attr_num ++;
+        node = node->next;
+    }
+    // TODO: check the num of attr
+    table->attr_num = attr_num;
+    return table;
 }
 
 attr_node_header_t  *sql_create_attr(char *name, int data_type)
@@ -12,7 +63,15 @@ attr_node_header_t  *sql_create_attr(char *name, int data_type)
     attr_node_header_t *new_node = (attr_node_header_t*)malloc(sizeof(attr_node_header_t));
     if (name)
         new_node->name = strdup(name);
-    new_node->data_type = data_type;
+    if (data_type > DATA_TYPE_VARCHAR 
+        && data_type <= (DATA_TYPE_VARCHAR + MAX_VARCHAR_LEN)) {
+        new_node->varchar_len = data_type - DATA_TYPE_VARCHAR;
+        new_node->data_type = DATA_TYPE_VARCHAR;
+    }
+    else if (data_type == DATA_TYPE_INT) {
+        new_node->data_type = DATA_TYPE_INT;
+    }
+
     new_node->next = NULL;
     new_node->head = NULL;
     new_node->tail = NULL;
@@ -50,3 +109,5 @@ void sql_recursive_printf_node(attr_node_header_t *list)
         list = list->next;
     }
 }
+
+
