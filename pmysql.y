@@ -14,6 +14,11 @@
 #include "node.h"
 void yyerror(char *s, ...);
 void emit(char *s, ...);
+#if YYBISON
+union YYSTYPE;
+//int yylex(union YYSTYPE *, void *); //for re-entrant?
+int yylex();
+#endif
 %}
 
 
@@ -25,6 +30,8 @@ void emit(char *s, ...);
 	attr_node_header_t *attr_node;
 	create_table_node_t *table_node;
 	stmt_node_t *stmt_node;
+	col_node_t *col_node;
+	expr_node_t *expr_node;
 }
 	
 	/* names and literal values */
@@ -288,7 +295,7 @@ void emit(char *s, ...);
 %type <intval> val_list opt_val_list case_list
 %type <intval> groupby_list opt_with_rollup opt_asc_desc
 %type <intval> table_references opt_inner_cross opt_outer
-%type <intval> left_or_right opt_left_or_right_outer column_list
+%type <intval> left_or_right opt_left_or_right_outer
 %type <intval> index_list opt_for_join
 
 %type <intval> delete_opts delete_list
@@ -298,6 +305,7 @@ void emit(char *s, ...);
 %type <intval> column_atts data_type opt_ignore_replace 
 %type <attr_node> create_definition create_col_list
 %type <table_node> create_table_stmt
+%type <col_node> column_list opt_col_names
 %start stmt_list
 
 %%
@@ -355,8 +363,8 @@ opt_into_list: /* nil */
    | INTO column_list { emit("INTO %d", $2); }
    ;
 
-column_list: NAME { emit("COLUMN %s", $1); free($1); $$ = 1; }
-  | column_list ',' NAME  { emit("COLUMN %s", $3); free($3); $$ = $1 + 1; }
+column_list: NAME { emit("COLUMN %s", $1); $$ = sql_col_list_node_create($1, NULL, true);free($1); }
+  | column_list ',' NAME  { $$ = sql_col_list_node_create($3, $1, false);emit("COLUMN %s", $3); free($3); }
   ;
 
 select_opts:                          { $$ = 0; }
@@ -520,8 +528,8 @@ insert_opts: /* nil */ { $$ = 0; }
 opt_into: INTO | /* nil */
    ;
 
-opt_col_names: /* nil */
-   | '(' column_list ')' { emit("INSERTCOLS %d", $2); }
+opt_col_names: /* nil */{ $$ = NULL ;}
+   | '(' column_list ')' { $$ = $2; sql_print_col_node($2);emit("INSERTCOLS %d", $2); }
    ;
 
 insert_vals_list: '(' insert_vals ')' { emit("VALUES %d", $2); $$ = 1; }
@@ -668,7 +676,7 @@ create_col_list: create_definition {sql_attr_head_set($1); sql_printf_attr($1);$
     ;
 
 create_definition: { /*emit("STARTCOL");*/ } NAME data_type column_atts
-                   { $$ = sql_create_attr($2, $3);/*emit("COLUMNDEF %d %s", $3, $2); */free($2); }
+                   { $$ = sql_create_attr($2, $3, $4);/*emit("COLUMNDEF %d %s", $3, $2); */free($2); }
 
     | PRIMARY KEY '(' column_list ')'    { emit("PRIKEY %d", $4); }
     | KEY '(' column_list ')'            { emit("KEY %d", $3); }
@@ -687,8 +695,8 @@ column_atts: /* nil */ { $$ = 0; }
     | column_atts AUTO_INCREMENT        { emit("ATTR AUTOINC"); $$ = $1 + 1; }
     | column_atts UNIQUE '(' column_list ')' { emit("ATTR UNIQUEKEY %d", $4); $$ = $1 + 1; }
     | column_atts UNIQUE KEY { emit("ATTR UNIQUEKEY"); $$ = $1 + 1; }
-    | column_atts PRIMARY KEY { emit("ATTR PRIKEY"); $$ = $1 + 1; }
-    | column_atts KEY { emit("ATTR PRIKEY"); $$ = $1 + 1; }
+    | column_atts PRIMARY KEY { emit("ATTR PRIKEY"); $$ = COL_ATTR_PRIKEY; }
+    | column_atts KEY { emit("ATTR PRIKEY"); $$ = COL_ATTR_PRIKEY; }
     | column_atts COMMENT STRING { emit("ATTR COMMENT %s", $3); free($3); $$ = $1 + 1; }
     ;
 
@@ -900,7 +908,7 @@ expr: BINARY expr %prec UMINUS { emit("STRTOBIN"); }
 void
 emit(char *s, ...)
 {
-  extern yylineno;
+  extern int yylineno;
 
   va_list ap;
   va_start(ap, s);
@@ -913,7 +921,7 @@ emit(char *s, ...)
 void
 yyerror(char *s, ...)
 {
-  extern yylineno;
+  extern int yylineno;
 
   va_list ap;
   va_start(ap, s);
