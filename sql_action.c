@@ -106,9 +106,10 @@ bool sql_data_info_valid_chk(create_table_node_t *table, col_node_t *col_node, i
     attr_node_t *attr_head = NULL;
     col_node_t *col = col_node;
     insert_vals_node_t *vals_nd = vals_node;
+    int i = 0;
     if (col) {
         while (col) {
-        for (int i = 0; (i < table->attr_num) && rtn; i++) {
+        for (i = 0; (i < table->attr_num) && rtn; i++) {
             if (strcasecmp(table->attr[i]->header->name, col->name) == 0) {
                 var_node_t *var =  vals_nd->var_info;
                 if (table->attr[i]->header->data_type == var->type) {
@@ -183,8 +184,8 @@ bool sql_data_info_valid_chk(create_table_node_t *table, col_node_t *col_node, i
         vals_nd = vals_nd->next;
         }
     } else {
-        
-        for (int i = 0; (i < table->attr_num) && rtn; i++) {
+        int i = 0;
+        for (i = 0; (i < table->attr_num) && rtn; i++) {
             if(!vals_nd)
                 break;
             var_node_t *var = vals_nd->var_info;
@@ -543,7 +544,8 @@ void sql_output_insert_result_to_file(insert_stmt_t *insr_stmt)
     create_table_node_t *table = sql_find_table(insr_stmt->table_name);
     if (table) {
         printf("table name: %s\n", table->table_name);
-        for (int i = 0; i < table->attr_num; i++) {
+        int i = 0;
+        for (i = 0; i < table->attr_num; i++) {
             printf("\t%s", table->attr[i]->header->name);
             if(table->attr[i]->header->is_PRIKEY)
                 printf("(P)");
