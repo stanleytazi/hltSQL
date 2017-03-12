@@ -56,8 +56,10 @@ typedef struct __ATTR_NODE_S__{
 } attr_node_t;
 
 
-typedef struct {
+typedef struct __TUPLE_NODE_S__{
     attr_node_t *attr;
+    struct __TUPLE_NODE_S__ *next;
+    struct __TUPLE_NODE_S__ *prev;
 } tuple_t;
 
 typedef struct __CREATE_TABLE_NODE__{
@@ -67,15 +69,18 @@ typedef struct __CREATE_TABLE_NODE__{
     unsigned int prim_key_num;
     attr_node_t *prim_key_attr;
     unsigned int tupleNum;
-    tuple_t *tuple_list;
+    tuple_t *tuple_list_head;
+    tuple_t *tuple_list_tail;
     struct __CREATE_TABLE_NODE__ *next;
 } create_table_node_t;
 
 typedef struct {
     stmt_type_e type;
-    void *cmd_info;
+    void *stmt_info;
     void (*stmt_save)(void *self, stmt_type_e type, void *info);
+
 } stmt_node_t;
+
 
 typedef struct __COL_LIST_NODE_S__{
     char *name;
@@ -88,7 +93,7 @@ typedef struct __VAR_S__{
     data_type_e type;
     int int_value;
     char *varchar_value;
-    int var_len;
+    int varchar_len;
     struct __VAR_S__ *next;
 } var_node_t;//variable node
 
@@ -107,6 +112,12 @@ typedef struct __INSERT_VALS_NODE_S__{
     struct __INSERT_VALS_NODE_S__ *next;    
 } insert_vals_node_t;
 
+typedef struct {
+    char *table_name;
+    col_node_t *col_list;
+    insert_vals_node_t *insr_vals_list;
+}insert_stmt_t;
+
 attr_node_header_t *sql_create_attr(char *name, int data_type, col_attr_e col_attr);
 attr_node_header_t *sql_attr_collect(attr_node_header_t *list, attr_node_header_t *node);
 void sql_attr_head_set(attr_node_header_t *head_node);
@@ -116,4 +127,10 @@ void sql_handle_table (create_table_node_t *table);
 void sql_printf_attr(attr_node_header_t *node);
 col_node_t *sql_col_list_node_create(char *name, col_node_t *list, bool is_head);
 void sql_print_col_node(col_node_t *list);
+stmt_node_t *sql_insert_stmt_create(stmt_type_e stmt_type, char *table_name, col_node_t *col_name_list, insert_vals_node_t *insr_vals_list);
+void sql_stmt_handle(stmt_node_t *stmt);
+bool sql_insert_stmt_handle(insert_stmt_t *insr_stmt);
+insert_vals_node_t *sql_insert_vals_node_create(expr_node_t *expr_node, insert_vals_node_t *list, bool is_head);
+expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char *varchar_val);
+void sql_output_insert_result_to_file(insert_stmt_t *stmt);
 #endif

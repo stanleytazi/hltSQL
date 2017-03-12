@@ -31,6 +31,7 @@ int yylex();
 	create_table_node_t *table_node;
 	stmt_node_t *stmt_node;
 	col_node_t *col_node;
+	insert_vals_node_t *insr_node;
 	expr_node_t *expr_node;
 }
 	
@@ -299,19 +300,22 @@ int yylex();
 %type <intval> index_list opt_for_join
 
 %type <intval> delete_opts delete_list
-%type <intval> insert_opts insert_vals insert_vals_list
+%type <intval> insert_opts 
 %type <intval> insert_asgn_list opt_if_not_exists update_opts update_asgn_list
 %type <intval> opt_temporary opt_length opt_binary opt_uz enum_list
 %type <intval> column_atts data_type opt_ignore_replace 
 %type <attr_node> create_definition create_col_list
 %type <table_node> create_table_stmt
 %type <col_node> column_list opt_col_names
+%type <stmt_node> insert_stmt stmt
+%type <expr_node> expr
+%type <insr_node> insert_vals insert_vals_list
 %start stmt_list
 
 %%
 
-stmt_list: stmt ';'
-  | stmt_list stmt ';'
+stmt_list: stmt ';' { sql_stmt_handle($1);emit("at beginning");}
+  | stmt_list stmt ';'{sql_stmt_handle($2);emit("SSSSSSS");}
   ;
 
    /* statements: select statement */
@@ -505,13 +509,13 @@ delete_stmt: DELETE delete_opts
 
    /* statements: insert statement */
 
-stmt: insert_stmt { emit("STMT"); }
+stmt: insert_stmt { $$ = $1 ; sql_output_insert_result_to_file($1->stmt_info);emit("STMT"); }
    ;
 
 insert_stmt: INSERT insert_opts opt_into NAME
      opt_col_names
      VALUES insert_vals_list
-     opt_ondupupdate { emit("INSERTVALS %d %d %s", $2, $7, $4); free($4); }
+     opt_ondupupdate { $$ = sql_insert_stmt_create(STMT_TYPE_INSERT_TUPLE, $4,$5,$7);emit("INSERTVALS %d %d %s", $2, $7, $4); free($4); }
    ;
 
 opt_ondupupdate: /* nil */
@@ -532,14 +536,14 @@ opt_col_names: /* nil */{ $$ = NULL ;}
    | '(' column_list ')' { $$ = $2; sql_print_col_node($2);emit("INSERTCOLS %d", $2); }
    ;
 
-insert_vals_list: '(' insert_vals ')' { emit("VALUES %d", $2); $$ = 1; }
+insert_vals_list: '(' insert_vals ')' { $$ = $2; }
    | insert_vals_list ',' '(' insert_vals ')' { emit("VALUES %d", $4); $$ = $1 + 1; }
 
 insert_vals:
-     expr { $$ = 1; }
-   | DEFAULT { emit("DEFAULT"); $$ = 1; }
-   | insert_vals ',' expr { $$ = $1 + 1; }
-   | insert_vals ',' DEFAULT { emit("DEFAULT"); $$ = $1 + 1; }
+     expr { $$ = sql_insert_vals_node_create($1, NULL, true); }
+   | DEFAULT { emit("DEFAULT"); $$ = NULL; }
+   | insert_vals ',' expr { $$ = sql_insert_vals_node_create($3, $1, false); }
+   | insert_vals ',' DEFAULT { emit("DEFAULT"); $$ = NULL; }
    ;
 
 insert_stmt: INSERT insert_opts opt_into NAME
@@ -685,7 +689,7 @@ create_definition: { /*emit("STARTCOL");*/ } NAME data_type column_atts
     | FULLTEXT KEY '(' column_list ')'   { emit("TEXTINDEX %d", $4); }
     ;
 
-column_atts: /* nil */ { $$ = 0; }
+column_atts: /* nil */ { $$ = COL_ATTR_VALID; }
     | column_atts NOT NULLX             { emit("ATTR NOTNULL"); $$ = $1 + 1; }
     | column_atts NULLX
     | column_atts DEFAULT STRING        { emit("ATTR DEFAULT STRING %s", $3); free($3); $$ = $1 + 1; }
@@ -788,8 +792,8 @@ set_expr:
 expr: NAME          { emit("NAME %s", $1); free($1); }
    | USERVAR         { emit("USERVAR %s", $1); free($1); }
    | NAME '.' NAME { emit("FIELDNAME %s.%s", $1, $3); free($1); free($3); }
-   | STRING        { emit("STRING %s", $1); free($1); }
-   | INTNUM        { emit("NUMBER %d", $1); }
+   | STRING        { $$ = sql_expr_basic_data_node_create(DATA_TYPE_VARCHAR, 0, $1); emit("STRING %s", $1); free($1); }
+   | INTNUM        { $$ = sql_expr_basic_data_node_create(DATA_TYPE_INT, $1, NULL); emit("NUMBER %d", $1); }
    | APPROXNUM     { emit("FLOAT %g", $1); }
    | BOOL          { emit("BOOL %d", $1); }
    ;
