@@ -33,6 +33,7 @@ int yylex();
 	col_node_t *col_node;
 	insert_vals_node_t *insr_node;
 	expr_node_t *expr_node;
+	cret_def_node_t *cret_node;
 }
 	
 	/* names and literal values */
@@ -304,12 +305,13 @@ int yylex();
 %type <intval> insert_asgn_list opt_if_not_exists update_opts update_asgn_list
 %type <intval> opt_temporary opt_length opt_binary opt_uz enum_list
 %type <intval> column_atts data_type opt_ignore_replace 
-%type <attr_node> create_definition create_col_list
+%type <attr_node> create_col_list
 %type <table_node> create_table_stmt
 %type <col_node> column_list opt_col_names
 %type <stmt_node> insert_stmt stmt
 %type <expr_node> expr
 %type <insr_node> insert_vals insert_vals_list
+%type <cret_node> create_definition
 %start stmt_list
 
 %%
@@ -675,14 +677,14 @@ create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME '.' NAME
                           free($5); free($7); }
     ;
 
-create_col_list: create_definition {sql_attr_head_set($1); sql_printf_attr($1);$$ = $1; }
-    | create_col_list ',' create_definition { sql_recursive_printf_node($1); $$ = sql_attr_collect($1, $3); sql_printf_attr($3);}
+create_col_list: create_definition {$$=sql_attr_head_set($1->cret_def_info); sql_printf_attr($1->cret_def_info); }
+    | create_col_list ',' create_definition { sql_recursive_printf_node($1); $$ = sql_cret_def_handle($1, $3); sql_printf_attr($$);}
     ;
 
 create_definition: { /*emit("STARTCOL");*/ } NAME data_type column_atts
-                   { $$ = sql_create_attr($2, $3, $4);/*emit("COLUMNDEF %d %s", $3, $2); */free($2); }
+                   { $$ = sql_cret_def_attr_declar_node_create($2, $3, $4);/*emit("COLUMNDEF %d %s", $3, $2); */free($2); }
 
-    | PRIMARY KEY '(' column_list ')'    { emit("PRIKEY %d", $4); }
+    | PRIMARY KEY '(' column_list ')'    { $$ = sql_cret_def_pk_def_node_create($4); emit("PRIKEY %d", $4); }
     | KEY '(' column_list ')'            { emit("KEY %d", $3); }
     | INDEX '(' column_list ')'          { emit("KEY %d", $3); }
     | FULLTEXT INDEX '(' column_list ')' { emit("TEXTINDEX %d", $4); }

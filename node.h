@@ -5,6 +5,7 @@
 
 #define MAX_ATTR_NUM 10
 #define MAX_VARCHAR_LEN 9999
+#define MAX_TUPLE_ATTR_HASH_SIZE 32
 typedef enum {
     DATA_TYPE_INT = 50000,
     DATA_TYPE_VARCHAR = 130000
@@ -27,6 +28,10 @@ typedef enum {
 
 } expr_type_e;
 
+typedef enum {
+    CREATE_DEF_TYPE_ATTR,
+    CREATE_DEF_TYPE_PK_COL_LIST
+} cret_def_e;
 
 typedef struct __ATTR_NODE_HEADER_S__ {
     data_type_e  data_type;
@@ -57,7 +62,7 @@ typedef struct __ATTR_NODE_S__{
 
 
 typedef struct __TUPLE_NODE_S__{
-    attr_node_t *attr;
+    attr_node_t *attr[MAX_TUPLE_ATTR_HASH_SIZE];
     struct __TUPLE_NODE_S__ *next;
     struct __TUPLE_NODE_S__ *prev;
 } tuple_t;
@@ -118,9 +123,15 @@ typedef struct {
     insert_vals_node_t *insr_vals_list;
 }insert_stmt_t;
 
+typedef struct {
+    cret_def_e type;
+    void *cret_def_info;
+}cret_def_node_t;
+
+
 attr_node_header_t *sql_create_attr(char *name, int data_type, col_attr_e col_attr);
 attr_node_header_t *sql_attr_collect(attr_node_header_t *list, attr_node_header_t *node);
-void sql_attr_head_set(attr_node_header_t *head_node);
+attr_node_header_t *sql_attr_head_set(attr_node_header_t *head_node);
 void sql_recursive_printf_node(attr_node_header_t *list);
 create_table_node_t *sql_create_table(char *table_name, attr_node_header_t *attr_list);
 void sql_handle_table (create_table_node_t *table);
@@ -133,4 +144,8 @@ bool sql_insert_stmt_handle(insert_stmt_t *insr_stmt);
 insert_vals_node_t *sql_insert_vals_node_create(expr_node_t *expr_node, insert_vals_node_t *list, bool is_head);
 expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char *varchar_val);
 void sql_output_insert_result_to_file(insert_stmt_t *stmt);
+attr_node_header_t *sql_cret_def_handle(attr_node_header_t *list, cret_def_node_t *cret_def_node);
+
+cret_def_node_t *sql_cret_def_pk_def_node_create(col_node_t *col_node);
+cret_def_node_t * sql_cret_def_attr_declar_node_create(char *name, int data_type, col_attr_e col_attr);
 #endif
