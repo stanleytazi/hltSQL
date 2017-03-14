@@ -473,6 +473,7 @@ opt_csc: /* nil */
 data_type:
     INTEGER opt_length opt_uz { $$ = DATA_TYPE_INT;}
    | VARCHAR '(' INTNUM ')' opt_csc { $$ = DATA_TYPE_VARCHAR + $3;}
+   /*
     | TINYINT opt_length opt_uz { $$ = 10000 + $2; }
    |  BIT opt_length { $$ = 10000 + $2; }
    | SMALLINT opt_length opt_uz { $$ = 20000 + $2 + $3; }
@@ -501,7 +502,8 @@ data_type:
    | LONGTEXT opt_binary opt_csc { $$ = 173000 + $2; }
    | ENUM '(' enum_list ')' opt_csc { $$ = 200000 + $3; }
    | SET '(' enum_list ')' opt_csc { $$ = 210000 + $3; }
-  ;
+*/
+;
 
 enum_list: STRING { show_log("ENUMVAL %s", $1); free($1); $$ = 1; }
    | enum_list ',' STRING { show_log("ENUMVAL %s", $3); free($3); $$ = $1 + 1; }
@@ -794,7 +796,7 @@ set_expr:
 
    /**** expressions ****/
 
-expr: NAME          { show_log("NAME %s", $1); free($1); }
+expr: NAME          { $$ = sql_expr_basic_data_node_create(DATA_TYPE_NAME, 0, $1);show_log("NAME %s", $1); free($1); }
    | USERVAR         { show_log("USERVAR %s", $1); free($1); }
    | NAME '.' NAME { show_log("FIELDNAME %s.%s", $1, $3); free($1); free($3); }
    | STRING        { $$ = sql_expr_basic_data_node_create(DATA_TYPE_VARCHAR, 0, $1); show_log("STRING %s", $1); free($1); }
@@ -951,6 +953,7 @@ yyerror(char *s, ...)
 int main(int ac, char **av)
 {
   extern FILE *yyin;
+  bool parse_fail = false;
 #ifdef LOG_TO_FILE
   FILE* output = fopen(OUTPUT, "wb");
   fprintf(output, "log start...\n");
@@ -967,7 +970,10 @@ int main(int ac, char **av)
   while (1) {
   if(!yyparse())
     printf("SQL parse worked\n");
-  else
-    show_log("SQL parse failed\n");
+  else {
+    if(!parse_fail)
+        show_log("SQL parse failed\n");
+    parse_fail = true;
     }
+  }
 } /* main */

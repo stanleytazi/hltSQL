@@ -7,8 +7,10 @@
 #define MAX_VARCHAR_LEN 9999
 #define MAX_TUPLE_ATTR_HASH_SIZE 32
 typedef enum {
+    DATA_TYPE_NAME = 0,
     DATA_TYPE_INT = 50000,
-    DATA_TYPE_VARCHAR = 130000
+    DATA_TYPE_VARCHAR = 130000,
+    DATA_TYPE_UNDEFINE = 99999
 } data_type_e;
 
 typedef enum {

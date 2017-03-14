@@ -755,6 +755,9 @@ expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char
             data->varchar_value = strdup(varchar_val);
             data->varchar_len = strlen(varchar_val)-2;
             break;
+        case DATA_TYPE_NAME:
+            printf("data type is not support\n", varchar_val);
+            break;
         default:
             break;
     }
