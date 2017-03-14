@@ -304,7 +304,7 @@ int yylex();
 %type <attr_node> create_col_list
 %type <table_node> create_table_stmt
 %type <col_node> column_list opt_col_names
-%type <stmt_node> insert_stmt stmt
+%type <stmt_node> insert_stmt stmt show_log_stmt
 %type <expr_node> expr
 %type <insr_node> insert_vals insert_vals_list
 %type <cret_node> create_definition
@@ -316,16 +316,16 @@ stmt_list: stmt ';' { sql_stmt_handle($1);}
   | stmt_list stmt ';'{sql_stmt_handle($2);}
   ;
 
-stmt: show_log_stmt {}
+stmt: show_log_stmt {$$=$1;}
     ;
 
 
-show_log_stmt: SHOW NAME { sql_show_table_content($2); free($2);}
+show_log_stmt: SHOW NAME { $$ = sql_show_table_content($2); free($2);}
              | SHOW ALL  {sql_show_all_table();}
              ;
    /* statements: insert statement */
 
-stmt: insert_stmt { $$ = $1 ; sql_output_insert_result_to_file($1->stmt_info);show_log("STMT"); }
+stmt: insert_stmt { $$ = $1 ; sql_output_insert_result_to_file($1->stmt_info); }
    ;
 
 insert_stmt: INSERT insert_opts opt_into NAME

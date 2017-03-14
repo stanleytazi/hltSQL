@@ -74,6 +74,10 @@ static void sql_stmt_save(stmt_node_t *self, stmt_type_e type, void *info)
 stmt_node_t *sql_stmt_act_init()
 {
     stmt_node_t *stmt_node = (stmt_node_t *) malloc(sizeof(stmt_node_t));
+    if (!stmt_node) {
+        printf("no heap mem\n");
+    }
+    memset(stmt_node, 0, sizeof(stmt_node_t));
     stmt_node->stmt_save = sql_stmt_save;
     
     return stmt_node;
@@ -544,6 +548,8 @@ void sql_stmt_handle(stmt_node_t *stmt)
         case STMT_TYPE_INSERT_TUPLE:
             sql_insert_stmt_handle((insert_stmt_t *)(stmt->stmt_info));
             break;
+        case STMT_TYPE_SHOW_LOG:
+            free(stmt);
         default:
             //printf("invalid stmt\n");
             break;
@@ -759,14 +765,14 @@ void sql_print_col_node(col_node_t *list)
         list = list->next;
     }
 }
-void sql_show_table_content(char *name)
+stmt_node_t *sql_show_table_content(char *name)
 {
     create_table_node_t *table = NULL;
     if (name)
         table = sql_find_table(name);
     else {
         printf("table name is NULL\n");
-        return;
+        return NULL;
     }
 
     if (table) {
@@ -813,6 +819,9 @@ void sql_show_table_content(char *name)
     } else {
         printf("error: can not find the table:%s\n", name);
     }
+    stmt_node_t *stmt = sql_stmt_act_init();
+    sql_stmt_save(stmt, STMT_TYPE_SHOW_LOG, NULL);
+    return stmt;
 }
 void sql_output_insert_result_to_file(insert_stmt_t *insr_stmt)
 {
