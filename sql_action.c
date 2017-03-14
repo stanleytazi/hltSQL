@@ -5,6 +5,24 @@
 
 #define MAX_TABLE_ENTRY 128
 static create_table_node_t *table_list[MAX_TABLE_ENTRY] = { NULL };
+static inline char *sql_data_type_translate(data_type_e type)
+{
+    char *type_s = NULL;
+    switch (type)
+    {
+        case DATA_TYPE_INT:
+            type_s = "int";      
+            break;
+        case DATA_TYPE_VARCHAR:
+            type_s = "string(varchar)";
+            break;
+        default:
+            printf("error: unknown data type\n");
+            break;
+    }
+    return type_s;
+}
+
 
 
 unsigned int BKDRHash(char *str)
@@ -33,7 +51,7 @@ void sql_handle_table (create_table_node_t *table)
         *tmp = table;
         printf("bucket idx = %d\n", bucket_idx);
         printf("table name : %s\n", table->table_name);
-        printf("\t\tattr number : %d\n", table->attr_num);
+        printf("attr number : %d\n", table->attr_num);
         while (num < table->attr_num) {
             node = table->attr[num]->header;
             printf("attr name=%s, dataType=%d, varLen=%d\n", node->name, node->data_type, node->varchar_len);
@@ -82,21 +100,20 @@ int sql_check_prikey_exist(create_table_node_t *table, col_node_t *col_node)
     attr_node_t *prikey = table->prim_key_attr;
     col_node_t *col = col_node; 
     char *attr_name = NULL;
-    while (col) {
-        while (prikey) {
-            attr_name = prikey->header->name;
+    while (prikey) {
+        attr_name = prikey->header->name;
+        while (col) {
             if (strcasecmp(attr_name, col->name) == 0) {
                 pkey_num--; 
                 break;
             }
-            prikey = prikey->next;
+            col = col->next;
         }
-        if (!prikey) {
-            printf("error: cannot find the attr name : \"%s\" you insert\n", col->name);
-            return -1;
+        if (table->prim_key_num && !col) {
+            printf("error: cannot find the primary key : \"%s\" \n", attr_name);
         }
-        col = col->next;
-        prikey = table->prim_key_attr;
+        prikey = prikey->next;
+        col = col_node;
     }
     return pkey_num;
 }
@@ -122,6 +139,18 @@ void sql_free_attr_list(attr_node_t *attr_node) {
         attr_node = attr_node->next;
         free(attr_nd_prev);
     }
+}
+
+void sql_free_attr_in_tuple(tuple_t * tuple)
+{
+   int i = 0;
+   attr_node_t *attr_node = NULL;
+
+   for (i = 0; i < MAX_TUPLE_ATTR_HASH_SIZE; i++)
+   {
+        sql_free_attr_list(tuple->attr[i]);
+   }
+
 }
 
 void sql_free_attr_header_list(attr_node_header_t *attr_node)
@@ -225,7 +254,8 @@ bool sql_data_info_valid_chk(create_table_node_t *table, col_node_t *col_node, i
                     if (var->type == DATA_TYPE_VARCHAR && 
                         var->varchar_len > table->attr[i]->header->varchar_len) {
                         rtn = false;
-                        printf("error: varchar len is too long\n");
+                        printf("error: varchar len is too long(%d), only %d allowed\n", 
+                                    var->varchar_len, table->attr[i]->header->varchar_len);
                         break;
                     }
                     attr_nd = (attr_node_t *) malloc(sizeof(attr_node_t));
@@ -273,7 +303,10 @@ bool sql_data_info_valid_chk(create_table_node_t *table, col_node_t *col_node, i
                     break;
                 }
                 else {
-                    printf("data type does not match\n");
+                    printf("data type does not match ");
+                    printf("%s is needed, your insert %s\n", 
+                            sql_data_type_translate(table->attr[i]->header->data_type), 
+                            sql_data_type_translate(var->type));
                     rtn = false;
                 }
             }
@@ -319,7 +352,8 @@ bool sql_data_info_valid_chk(create_table_node_t *table, col_node_t *col_node, i
                             attr_nd->value->varchar_value = strdup(var->varchar_value);
                         else {
                             rtn = false;
-                            printf("error: varchar len is too long\n");
+                            printf("error: varchar len is too long(%d), only %d allowed\n", 
+                                    var->varchar_len, attr_nd->header->varchar_len);
                         }
                         break;
                     default:
@@ -342,12 +376,15 @@ bool sql_data_info_valid_chk(create_table_node_t *table, col_node_t *col_node, i
                     attr_nd = NULL;
                 }
             } else {
-                printf("error: data type does not match\n");
-                rtn = false;
+                printf("error: data type does not match: ");
+                printf("%s is needed, your insert %s\n", 
+                        sql_data_type_translate(table->attr[i]->header->data_type), 
+                        sql_data_type_translate(var->type));
+                    rtn = false;
             }
             vals_nd = vals_nd->next;
         }
-        if (attr_ok_num < table->attr_num) {
+        if (rtn && (attr_ok_num < table->attr_num)) {
             printf("error: num of values is not enough\n");
             rtn = false;
         }
@@ -376,9 +413,38 @@ bool sql_data_info_valid_chk(create_table_node_t *table, col_node_t *col_node, i
             table->tuple_list_tail = tuple_nd;
             table->tupleNum++;
         } else {
-            //   
-            printf("tuple is duplicated\n");
-            sql_free_attr_list(attr_head);
+            //
+            if (table->prim_key_num) {
+                printf("primary key \n");
+                attr_node_t *pk_attr   = table->prim_key_attr;
+                attr_node_t *attr_find = NULL;
+                while (pk_attr) {
+                    if (pk_attr->header->name) {
+                        printf("%s(", pk_attr->header->name);
+                        attr_find = sql_find_attr_in_tuple(tuple_nd, pk_attr->header->name); 
+                        if (attr_find && attr_find->value) {
+                            switch (attr_find->header->data_type) 
+                            {
+                                case DATA_TYPE_INT:
+                                    printf("%d )", attr_find->value->int_value);
+                                    break;
+                                case DATA_TYPE_VARCHAR:
+                                    if(attr_find->value->varchar_value)
+                                        printf("%s )", attr_find->value->varchar_value);
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+                    }
+                    printf("\n");
+                    pk_attr = pk_attr->next;
+                }
+                printf("is duplicated\n");
+            }
+            else
+                printf("tuple is duplicated\n");
+            sql_free_attr_in_tuple(tuple_nd);
             free(tuple_nd);
         }
     } else {
@@ -449,7 +515,7 @@ bool sql_insert_stmt_handle(insert_stmt_t *insr_stmt)
             result = sql_check_prikey_exist(table, insr_stmt->col_list);
             if (result >0) {
                 if (table->prim_key_num)
-                    printf("error: miss the primary key(s)\n ");
+                    printf("error: primary key(s) cannot be null\n ");
                 else
                     printf("error: num of attr you insert is not enough\n");
                 rtn = false;
@@ -479,7 +545,7 @@ void sql_stmt_handle(stmt_node_t *stmt)
             sql_insert_stmt_handle((insert_stmt_t *)(stmt->stmt_info));
             break;
         default:
-            printf("invalid stmt\n");
+            //printf("invalid stmt\n");
             break;
         }
     }
@@ -672,7 +738,7 @@ expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char
             break;
         case DATA_TYPE_VARCHAR:
             data->varchar_value = strdup(varchar_val);
-            data->varchar_len = strlen(varchar_val);
+            data->varchar_len = strlen(varchar_val)-2;
             break;
         default:
             break;
@@ -693,11 +759,16 @@ void sql_print_col_node(col_node_t *list)
         list = list->next;
     }
 }
-
-void sql_output_insert_result_to_file(insert_stmt_t *insr_stmt)
+void sql_show_table_content(char *name)
 {
+    create_table_node_t *table = NULL;
+    if (name)
+        table = sql_find_table(name);
+    else {
+        printf("table name is NULL\n");
+        return;
+    }
 
-    create_table_node_t *table = sql_find_table(insr_stmt->table_name);
     if (table) {
         printf("table name: %s\n", table->table_name);
         int i = 0;
@@ -739,9 +810,18 @@ void sql_output_insert_result_to_file(insert_stmt_t *insr_stmt)
                 printf("\n");
             }
         }
+    } else {
+        printf("error: can not find the table:%s\n", name);
     }
 }
+void sql_output_insert_result_to_file(insert_stmt_t *insr_stmt)
+{
+    sql_show_table_content(insr_stmt->table_name);
+}
+void sql_show_all_table()
+{
 
+}
 cret_def_node_t * sql_cret_def_attr_declar_node_create(char *name, int data_type, col_attr_e col_attr)
 {
     cret_def_node_t *cret_nd = (cret_def_node_t *) malloc(sizeof(cret_def_node_t));
