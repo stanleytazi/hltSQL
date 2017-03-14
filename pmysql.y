@@ -649,7 +649,7 @@ stmt: create_table_stmt { sql_handle_table($1);emit("STMT"); }
 
 create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME
    '(' create_col_list ')' 
-   { $$ = sql_create_table($5, $7); emit("CREATE %d %d %s", $2, $4, $5); free($5); }
+   { $$ = sql_create_table($5, $7); if ($$==NULL) sql_free_attr_header_list($7); emit("CREATE %d %d %s", $2, $4, $5); free($5); }
    ;
 
 create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME '.' NAME
@@ -949,9 +949,10 @@ int main(int ac, char **av)
     perror(av[1]);
     exit(1);
   }
-
+  while (1) {
   if(!yyparse())
     printf("SQL parse worked\n");
   else
     printf("SQL parse failed\n");
+    }
 } /* main */

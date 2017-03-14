@@ -1,14 +1,6 @@
-/* Companion source code for "flex & bison", published by O'Reilly
- * Media, ISBN 978-0-596-15597-1
- * Copyright (c) 2009, Taughannock Networks. All rights reserved.
- * See the README file for license conditions and contact info.
- * $Header: /home/johnl/flnb/code/sql/RCS/pmysql.l,v 2.1 2009/11/08 02:53:39 johnl Exp $
- */
-/*
- * Scanner for mysql subset
- */
 
 %option noyywrap nodefault yylineno case-insensitive
+/*%option nodefault yylineno case-insensitive*/
 %{
 #include "node.h"
 #include "pmysql.tab.h"
@@ -349,7 +341,7 @@ COUNT    { int c = input(); unput(c);
 <COMMENT><<EOF>> { yyerror("unclosed comment"); }
 
 	/* everything else */
-[ \t\n]         /* white space */
+[ \t\n]+       /* white space */
 .               { yyerror("mystery character '%c'", *yytext); }
 
 %%
