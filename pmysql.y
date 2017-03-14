@@ -471,12 +471,13 @@ opt_csc: /* nil */
    ;
 
 data_type:
-     BIT opt_length { $$ = 10000 + $2; }
-   | TINYINT opt_length opt_uz { $$ = 10000 + $2; }
+    INTEGER opt_length opt_uz { $$ = DATA_TYPE_INT;}
+   | VARCHAR '(' INTNUM ')' opt_csc { $$ = DATA_TYPE_VARCHAR + $3;}
+    | TINYINT opt_length opt_uz { $$ = 10000 + $2; }
+   |  BIT opt_length { $$ = 10000 + $2; }
    | SMALLINT opt_length opt_uz { $$ = 20000 + $2 + $3; }
    | MEDIUMINT opt_length opt_uz { $$ = 30000 + $2 + $3; }
    | INT opt_length opt_uz { $$ = 40000 + $2 + $3; }
-   | INTEGER opt_length opt_uz { $$ = DATA_TYPE_INT;}
    | BIGINT opt_length opt_uz { $$ = 60000 + $2 + $3; }
    | REAL opt_length opt_uz { $$ = 70000 + $2 + $3; }
    | DOUBLE opt_length opt_uz { $$ = 80000 + $2 + $3; }
@@ -488,7 +489,6 @@ data_type:
    | DATETIME { $$ = 100004; }
    | YEAR { $$ = 100005; }
    | CHAR opt_length opt_csc { $$ = 120000 + $2; }
-   | VARCHAR '(' INTNUM ')' opt_csc { $$ = DATA_TYPE_VARCHAR + $3;}
    | BINARY opt_length { $$ = 140000 + $2; }
    | VARBINARY '(' INTNUM ')' { $$ = 150000 + $3; }
    | TINYBLOB { $$ = 160001; }
@@ -501,7 +501,7 @@ data_type:
    | LONGTEXT opt_binary opt_csc { $$ = 173000 + $2; }
    | ENUM '(' enum_list ')' opt_csc { $$ = 200000 + $3; }
    | SET '(' enum_list ')' opt_csc { $$ = 210000 + $3; }
-   ;
+  ;
 
 enum_list: STRING { show_log("ENUMVAL %s", $1); free($1); $$ = 1; }
    | enum_list ',' STRING { show_log("ENUMVAL %s", $3); free($3); $$ = $1 + 1; }

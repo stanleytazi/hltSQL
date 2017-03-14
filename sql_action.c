@@ -502,7 +502,7 @@ static void sql_insert_stmt_free_mem(insert_stmt_t *insr_stmt)
         vals_prev = vals_nd;
         vals_nd = vals_nd->next;
         if (vals_prev->var_info) {
-            if (vals_prev->var_info->varchar_value)
+            if (vals_prev->var_info->varchar_value && vals_prev->var_info->type == DATA_TYPE_VARCHAR)
                 free(vals_prev->var_info->varchar_value);
             free(vals_prev->var_info);
         }
