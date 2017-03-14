@@ -151,4 +151,5 @@ cret_def_node_t *sql_cret_def_pk_def_node_create(col_node_t *col_node);
 cret_def_node_t * sql_cret_def_attr_declar_node_create(char *name, int data_type, col_attr_e col_attr);
 void sql_free_attr_header_list(attr_node_header_t *attr_node);
 stmt_node_t *sql_show_table_content(char *name);
+stmt_node_t *sql_show_all_table(void);
 #endif

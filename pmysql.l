@@ -310,7 +310,7 @@ COUNT    { int c = input(); unput(c);
            yylval.strval = strdup(yytext);
            return NAME; }
 
-[A-Za-z][A-Za-z0-9_]*	{ yylval.strval = strdup(yytext);
+[A-Za-z0-9_]*[A-Za-z0-9_]*	{ yylval.strval = strdup(yytext);
                           return NAME; }
 `[^`/\\.\n]+`           { yylval.strval = strdup(yytext+1);
                           yylval.strval[yyleng-2] = 0;

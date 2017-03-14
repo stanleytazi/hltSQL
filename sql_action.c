@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "node.h"
 
 #define MAX_TABLE_ENTRY 128
@@ -29,11 +30,15 @@ unsigned int BKDRHash(char *str)
 {
     unsigned int seed = 131;
     unsigned int hash = 0;
-
-    while (*str) {
-            hash = hash * seed + (*str++);
+    char *lower_str = (char *)malloc(sizeof(str));
+    char *lstr = lower_str;
+    int i = 0;
+    for (i = 0; i < sizeof(str); i++) 
+        *(lower_str+i) = tolower(*(str+i));
+    while (*lower_str) {
+            hash = hash * seed + (*lower_str++);
         }
-
+    free(lstr);
     return (hash & 0x7FFFFFFF);
 }
 
@@ -41,7 +46,7 @@ void sql_handle_table (create_table_node_t *table)
 {
     int num  = 0;
     attr_node_header_t *node = NULL;
-    printf("============\n");
+    //printf("============\n");
     if (table) {
         int bucket_idx = BKDRHash(table->table_name) % MAX_TABLE_ENTRY;
         create_table_node_t **tmp = &table_list[bucket_idx];
@@ -49,16 +54,16 @@ void sql_handle_table (create_table_node_t *table)
             tmp = &((*tmp)->next);
         }
         *tmp = table;
-        printf("bucket idx = %d\n", bucket_idx);
-        printf("table name : %s\n", table->table_name);
-        printf("attr number : %d\n", table->attr_num);
+        //printf("bucket idx = %d\n", bucket_idx);
+        //printf("table name : %s\n", table->table_name);
+        //printf("attr number : %d\n", table->attr_num);
         while (num < table->attr_num) {
             node = table->attr[num]->header;
-            printf("attr name=%s, dataType=%d, varLen=%d\n", node->name, node->data_type, node->varchar_len);
+            //printf("attr name=%s, dataType=%d, varLen=%d\n", node->name, node->data_type, node->varchar_len);
             num++;
         }
     }
-    printf("============\n");
+    //printf("============\n");
 }
 stmt_node_t *sql_create_stmt(stmt_type_e stmt_type, void *parsed_stmt)
 {
@@ -430,11 +435,11 @@ bool sql_data_info_valid_chk(create_table_node_t *table, col_node_t *col_node, i
                             switch (attr_find->header->data_type) 
                             {
                                 case DATA_TYPE_INT:
-                                    printf("%d )", attr_find->value->int_value);
+                                    printf("%d)", attr_find->value->int_value);
                                     break;
                                 case DATA_TYPE_VARCHAR:
                                     if(attr_find->value->varchar_value)
-                                        printf("%s )", attr_find->value->varchar_value);
+                                        printf("%s)", attr_find->value->varchar_value);
                                     break;
                                 default:
                                     break;
@@ -653,7 +658,7 @@ attr_node_header_t  *sql_create_attr(char *name, int data_type, col_attr_e col_a
     new_node->next = NULL;
     new_node->head = NULL;
     new_node->tail = NULL;
-    printf("create attr name:%s, data type%d\n", new_node->name, new_node->data_type);
+   // printf("create attr name:%s, data type%d\n", new_node->name, new_node->data_type);
     return new_node;
 }
 
@@ -676,17 +681,21 @@ attr_node_header_t *sql_attr_collect(attr_node_header_t *list, attr_node_header_
 
 void sql_printf_attr(attr_node_header_t *node)
 {
+#ifdef SDEBUG
     if (node) {
         printf("name=%s, dataType=%d\n", node->name, node->data_type);
     }
+#endif
 }
 
 void sql_recursive_printf_node(attr_node_header_t *list)
 {
+#ifdef SDEBUG
     while (list) {
         printf("node name = %s\n", list->name);
         list = list->next;
     }
+#endif
 }
 
 
@@ -825,11 +834,31 @@ stmt_node_t *sql_show_table_content(char *name)
 }
 void sql_output_insert_result_to_file(insert_stmt_t *insr_stmt)
 {
+#ifdef SDEBUG
     sql_show_table_content(insr_stmt->table_name);
+#endif
 }
-void sql_show_all_table()
+stmt_node_t *sql_show_all_table(void)
 {
-
+    int i = 0;
+    create_table_node_t *table = NULL;
+    stmt_node_t *stmt = NULL;
+    for (i = 0; i < MAX_TABLE_ENTRY; i++) {
+        table = table_list[i];
+        while (table) {
+            if (table->table_name) {
+                stmt = sql_show_table_content(table->table_name);
+                if(stmt)
+                    free(stmt);
+            }
+            table = table->next;
+            printf("\n");
+            
+        }
+    }
+    stmt = sql_stmt_act_init();
+    sql_stmt_save(stmt, STMT_TYPE_SHOW_LOG, NULL);
+    return stmt;
 }
 cret_def_node_t * sql_cret_def_attr_declar_node_create(char *name, int data_type, col_attr_e col_attr)
 {

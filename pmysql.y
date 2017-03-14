@@ -321,7 +321,7 @@ stmt: show_log_stmt {$$=$1;}
 
 
 show_log_stmt: SHOW NAME { $$ = sql_show_table_content($2); free($2);}
-             | SHOW ALL  {sql_show_all_table();}
+             | SHOW ALL  {$$ = sql_show_all_table();}
              ;
    /* statements: insert statement */
 

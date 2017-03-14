@@ -12,6 +12,12 @@ ifeq ($(strip $(LOG_TO_FILE)),1)
     LDFLAGS += $(LOG_TO_FILE_FLAGS) 
 endif
 
+ifeq ($(strip $(SDEBUG)),1)
+    SDBG_FLAGS = -DSDEBUG
+    CFLAGS += $(SDBG_FLAGS)
+    LDFLAGS += $(SDBG_FLAGS) 
+endif
+
 EXE = hltsql
 
 OBJ := pmysql.tab.o pmysql.o sql_action.o
@@ -33,10 +39,7 @@ sql_action.o: sql_action.c node.h
 
 
 clean:
-	rm -f pmysql pmysql.tab.c pmysql.tab.h pmysql.c pmysql.tab.o pmysql.o \
-	lpmysql	lpmysql.tab.o lpmysql.o lpmysql.tab.c lpmysql.tab.h lpmysql.c \
-	glrmysql glrmysql.tab.o glrmysql.o glrmysql.tab.c glrmysql.tab.h \
-	glrmysql.c glrmysql.output lpmysql.output pmysql.output
+	rm -f hltsql pmysql.tab.c pmysql.tab.h pmysql.c pmysql.tab.o pmysql.o pmysql.output
 
 .SUFFIXES:	.l .y .c
 
