@@ -325,7 +325,7 @@ show_log_stmt: SHOW NAME { $$ = sql_show_table_content($2); free($2);}
              ;
    /* statements: insert statement */
 
-stmt: insert_stmt { $$ = $1 ; sql_output_insert_result_to_file($1->stmt_info); }
+stmt: insert_stmt { $$ = $1 ;}
    ;
 
 insert_stmt: INSERT insert_opts opt_into NAME
@@ -333,6 +333,21 @@ insert_stmt: INSERT insert_opts opt_into NAME
      VALUES insert_vals_list
      opt_ondupupdate { $$ = sql_insert_stmt_create(STMT_TYPE_INSERT_TUPLE, $4,$5,$7);show_log("INSERTVALS %d %d %s", $2, $7, $4); free($4); }
    ;
+
+insert_stmt: NAME insert_opts opt_into NAME
+     opt_col_names
+     VALUES insert_vals_list
+     opt_ondupupdate { printf(" %s should be INSERT\n",$1);$$=NULL; free($4); }
+
+insert_stmt: INSERT insert_opts opt_into NAME
+     opt_col_names
+     insert_vals_list
+     opt_ondupupdate { printf(" \"VALUES\" is missing\n");$$=NULL; free($4); }
+
+insert_stmt: INSERT insert_opts opt_into NAME
+     opt_col_names
+     NAME insert_vals_list
+     opt_ondupupdate { printf(" \"%s\" should be VALUES\n", $6);$$=NULL; free($4);free($6); }
 
 opt_ondupupdate: /* nil */
    | ONDUPLICATE KEY UPDATE insert_asgn_list { show_log("DUPUPDATE %d", $4); }
@@ -410,7 +425,15 @@ create_select_statement { show_log("CREATESELECT %d %d %s", $2, $4,$5); free($5)
 create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME
    create_select_statement { show_log("CREATESELECT %d %d 0 %s", $2, $4, $5); free($5); }
     ;
-create_table_stmt: CREATE opt_temporary opt_if_not_exists NAME '(' create_col_list')' {show_log("CREATE TABLE FAIL:\"Table\"is missing ");free($4);};
+/*error status*/
+
+create_table_stmt: CREATE opt_temporary opt_if_not_exists NAME '(' create_col_list')' {printf("CREATE TABLE FAIL:\"Table\"is missing\n ");$$=NULL;if ($6) sql_free_attr_header_list($6);free($4);};
+create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME create_col_list')' {printf("CREATE TABLE FAIL:\"(\"is missing\n ");$$=NULL;if ($6) sql_free_attr_header_list($6);free($5);};
+create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME '('create_col_list {printf("CREATE TABLE FAIL:\")\"is missing \n");$$=NULL;if ($7) sql_free_attr_header_list($7);free($5);};
+create_table_stmt: NAME opt_temporary TABLE opt_if_not_exists NAME '('create_col_list')' {printf("CREATE TABLE FAIL:\"%s\" should be CREATE\n ", $1);$$=NULL;if ($7) sql_free_attr_header_list($7);free($1);free($5);};
+create_table_stmt: CREATE opt_temporary NAME opt_if_not_exists NAME '('create_col_list')' {printf("CREATE TABLE FAIL:\"%s\" should be TABLE\n ", $3);$$=NULL; if ($7) sql_free_attr_header_list($7);free($3);free($5);};
+
+create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME '.' NAME
 create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME '.' NAME
    '(' create_col_list ')'
    create_select_statement  { show_log("CREATESELECT %d %d 0 %s.%s", $2, $4, $5, $7);

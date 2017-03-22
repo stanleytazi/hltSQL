@@ -50,7 +50,6 @@ CHAR(ACTER)?	{ return CHAR; }
 CHECK	{ return CHECK; }
 COLLATE	{ return COLLATE; }
 COLUMN	{ return COLUMN; }
-COMMENT	{ return COMMENT; }
 CONDITION	{ return CONDITION; }
 CONSTRAINT	{ return CONSTRAINT; }
 CONTINUE	{ return CONTINUE; }

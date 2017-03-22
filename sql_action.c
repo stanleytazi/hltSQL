@@ -30,14 +30,16 @@ unsigned int BKDRHash(char *str)
 {
     unsigned int seed = 131;
     unsigned int hash = 0;
-    char *lower_str = (char *)malloc(sizeof(str));
+    char *lower_str = (char *) malloc (sizeof(str));
     char *lstr = lower_str;
     int i = 0;
+    
     for (i = 0; i < sizeof(str); i++) 
         *(lower_str+i) = tolower(*(str+i));
+    *(lower_str+sizeof(str)) = '\0';
     while (*lower_str) {
             hash = hash * seed + (*lower_str++);
-        }
+    }
     free(lstr);
     return (hash & 0x7FFFFFFF);
 }
@@ -574,6 +576,7 @@ create_table_node_t *sql_create_table(char *table_name, attr_node_header_t *attr
     int attr_num = 0;
     attr_node_t **prim_key_tail;
     attr_node_header_t *node = attr_list;
+    attr_node_header_t *node_prev = NULL;
     create_table_node_t *table = NULL;
     if (sql_find_table(table_name)) {
         printf("error: the table : %s has been created before\n", table_name);
@@ -595,18 +598,26 @@ create_table_node_t *sql_create_table(char *table_name, attr_node_header_t *attr
     table->tuple_list_tail = NULL;
     prim_key_tail = &(table->prim_key_attr);
     while (node) {
-        table->attr[attr_num] = (attr_node_t *) malloc(sizeof(attr_node_t));
-        if ( !table->attr[attr_num])
-            return NULL;
-        table->attr[attr_num]->header = node;
-        if (node->is_PRIKEY) {
-            table->prim_key_num ++;
-            *prim_key_tail = table->attr[attr_num];
-            prim_key_tail = &(table->attr[attr_num]->next);
-            *prim_key_tail = NULL;
-        }
-        attr_num ++;
+        node_prev = node;
         node = node->next;
+        if (attr_num < MAX_ATTR_NUM) {
+            table->attr[attr_num] = (attr_node_t *) malloc(sizeof(attr_node_t));
+            if ( !table->attr[attr_num])
+                return NULL;
+            table->attr[attr_num]->header = node_prev;
+            if (node_prev->is_PRIKEY) {
+                table->prim_key_num ++;
+                *prim_key_tail = table->attr[attr_num];
+                prim_key_tail = &(table->attr[attr_num]->next);
+                *prim_key_tail = NULL;
+            }
+            attr_num ++;
+        } else {
+            
+            printf("error attr: %s will be discarded\n", node_prev->name); 
+            free(node_prev->name);
+            free(node_prev);
+        }
     }
     if (!table->prim_key_num) {
         int i = 0;
@@ -780,6 +791,10 @@ void sql_print_col_node(col_node_t *list)
 stmt_node_t *sql_show_table_content(char *name)
 {
     create_table_node_t *table = NULL;
+    tuple_t *tuple_nd = NULL;
+    attr_node_t *attr_nd = NULL; 
+    unsigned int bucket_idx = 0;
+    bool is_find = false;
     if (name)
         table = sql_find_table(name);
     else {
@@ -797,12 +812,8 @@ stmt_node_t *sql_show_table_content(char *name)
         }
         printf("\n");
         if (table->tupleNum) {
-            tuple_t *tuple_nd = NULL;
-            tuple_nd = table->tuple_list_head;
+        tuple_nd = table->tuple_list_head;
             while (tuple_nd) {
-                attr_node_t *attr_nd = NULL; 
-                int bucket_idx = -1;
-                bool is_find = false;
                 for (i = 0; i < table->attr_num; i++) {
                     bucket_idx = BKDRHash(table->attr[i]->header->name) % MAX_TUPLE_ATTR_HASH_SIZE;
                     attr_nd = tuple_nd->attr[bucket_idx];
@@ -815,14 +826,16 @@ stmt_node_t *sql_show_table_content(char *name)
                     }
                     if (is_find) {
                 
+                        is_find = false;
                         if(attr_nd->header->data_type == DATA_TYPE_VARCHAR ) // TODO: may not be right
                             printf("\t%s", attr_nd->value->varchar_value);
                         else
                             printf("\t%d", attr_nd->value->int_value);
+                    
                     } else {
                         printf("\tnull");
+                        printf("what?\n");
                     }
-                    is_find = false;
                 }
                 tuple_nd = tuple_nd->next;
                 printf("\n");

@@ -3,7 +3,7 @@
 #define __NODE_H__
 #include <stdbool.h>
 
-#define MAX_ATTR_NUM 10
+#define MAX_ATTR_NUM 20
 #define MAX_VARCHAR_LEN 9999
 #define MAX_TUPLE_ATTR_HASH_SIZE 32
 typedef enum {
