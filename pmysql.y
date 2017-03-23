@@ -941,6 +941,7 @@ expr: BINARY expr %prec UMINUS { show_log("STRTOBIN"); }
 #ifdef LOG_TO_FILE
 #define OUTPUT "log.txt"
 #endif
+extern void yyrestart (FILE *input_file  );
 void
 show_log(char *s, ...)
 {
@@ -994,9 +995,8 @@ int main(int ac, char **av)
   if(!yyparse())
     printf("SQL parse worked\n");
   else {
-    if(!parse_fail)
-        show_log("SQL parse failed\n");
-    parse_fail = true;
+        printf("SQL parse failed\n");
+        yyrestart(yyin);
     }
   }
 } /* main */
