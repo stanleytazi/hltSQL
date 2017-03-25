@@ -331,7 +331,7 @@ stmt: insert_stmt { $$ = $1 ;}
 insert_stmt: INSERT insert_opts opt_into NAME
      opt_col_names
      VALUES insert_vals_list
-     opt_ondupupdate { $$ = sql_insert_stmt_create(STMT_TYPE_INSERT_TUPLE, $4,$5,$7);show_log("INSERTVALS %d %d %s", $2, $7, $4); free($4); }
+     opt_ondupupdate { $$ = sql_insert_stmt_create($4, $5, $7);show_log("INSERTVALS %d %d %s", $2, $7, $4); free($4); }
    ;
 
 insert_stmt: NAME insert_opts opt_into NAME
@@ -404,12 +404,12 @@ insert_asgn_list:
    ;
 
    /** create table **/
-stmt: create_table_stmt { sql_handle_table($1);show_log("STMT"); }
+stmt: create_table_stmt { $$ = $1);show_log("STMT"); }
    ;
 
 create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME
    '(' create_col_list ')' 
-   { $$ = sql_create_table($5, $7); if ($$==NULL) sql_free_attr_header_list($7); show_log("CREATE %d %d %s", $2, $4, $5); free($5); }
+   { $$ = sql_cret_table_stmt_create($5, $7); if ($$==NULL) sql_free_attr_header_list($7); show_log("CREATE %d %d %s", $2, $4, $5); }
    ;
 
 create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME '.' NAME
@@ -445,12 +445,13 @@ create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME '.' NAME
                           free($5); free($7); }
     ;
 
-create_col_list: create_definition {$$=sql_attr_head_set($1->cret_def_info); sql_printf_attr($1->cret_def_info); }
+create_col_list: create_definition {$$=sql_cret_def_handle(NULL, $1); sql_printf_attr($1->cret_def_info); }
     | create_col_list ',' create_definition { sql_recursive_printf_node($1); $$ = sql_cret_def_handle($1, $3); sql_printf_attr($$);}
     ;
 
-create_definition: { /*show_log("STARTCOL");*/ } NAME data_type column_atts
-                   { $$ = sql_cret_def_attr_declar_node_create($2, $3, $4);/*show_log("COLUMNDEF %d %s", $3, $2); */free($2); }
+create_definition: /* nil*/ {printf("NULL column\n");} 
+    | {} NAME data_type column_atts
+                   { $$ = sql_cret_def_attr_declar_node_create($2, $3, $4);/*show_log("COLUMNDEF %d %s", $3, $2); */ }
 
     | PRIMARY KEY '(' column_list ')'    { $$ = sql_cret_def_pk_def_node_create($4); show_log("PRIKEY %d", $4); }
     | KEY '(' column_list ')'            { show_log("KEY %d", $3); }
@@ -459,19 +460,19 @@ create_definition: { /*show_log("STARTCOL");*/ } NAME data_type column_atts
     | FULLTEXT KEY '(' column_list ')'   { show_log("TEXTINDEX %d", $4); }
     ;
 
-column_atts: /* nil */ { $$ = COL_ATTR_VALID; }
-    | column_atts NOT NULLX             { show_log("ATTR NOTNULL"); $$ = $1 + 1; }
+column_atts: /* nil */ { $$ = (1<<COL_ATTR_VALID); }
+    | column_atts NOT NULLX             { show_log("ATTR NOTNULL"); $$ = 1<<($1 + 1); }
     | column_atts NULLX
-    | column_atts DEFAULT STRING        { show_log("ATTR DEFAULT STRING %s", $3); free($3); $$ = $1 + 1; }
-    | column_atts DEFAULT INTNUM        { show_log("ATTR DEFAULT NUMBER %d", $3); $$ = $1 + 1; }
-    | column_atts DEFAULT APPROXNUM     { show_log("ATTR DEFAULT FLOAT %g", $3); $$ = $1 + 1; }
-    | column_atts DEFAULT BOOL          { show_log("ATTR DEFAULT BOOL %d", $3); $$ = $1 + 1; }
+    | column_atts DEFAULT STRING        { show_log("ATTR DEFAULT STRING %s", $3); free($3); $$ = 1<<($1 + 1); }
+    | column_atts DEFAULT INTNUM        { show_log("ATTR DEFAULT NUMBER %d", $3); $$ = 1<<($1 + 1); }
+    | column_atts DEFAULT APPROXNUM     { show_log("ATTR DEFAULT FLOAT %g", $3); $$ = 1<<($1 + 1); }
+    | column_atts DEFAULT BOOL          { show_log("ATTR DEFAULT BOOL %d", $3); $$ = 1<<($1 + 1); }
     | column_atts AUTO_INCREMENT        { show_log("ATTR AUTOINC"); $$ = $1 + 1; }
-    | column_atts UNIQUE '(' column_list ')' { show_log("ATTR UNIQUEKEY %d", $4); $$ = $1 + 1; }
-    | column_atts UNIQUE KEY { show_log("ATTR UNIQUEKEY"); $$ = $1 + 1; }
-    | column_atts PRIMARY KEY { show_log("ATTR PRIKEY"); $$ = COL_ATTR_PRIKEY; }
-    | column_atts KEY { show_log("ATTR PRIKEY"); $$ = COL_ATTR_PRIKEY; }
-    | column_atts COMMENT STRING { show_log("ATTR COMMENT %s", $3); free($3); $$ = $1 + 1; }
+    | column_atts UNIQUE '(' column_list ')' { show_log("ATTR UNIQUEKEY %d", $4); $$ = 1<<($1 + 1); }
+    | column_atts UNIQUE KEY { show_log("ATTR UNIQUEKEY"); $$ = 1<<($1 + 1); }
+    | column_atts PRIMARY KEY { show_log("ATTR PRIKEY"); $$ = 1<<COL_ATTR_PRIKEY; }
+    | column_atts KEY { show_log("ATTR PRIKEY"); $$ = 1<<COL_ATTR_PRIKEY; }
+    | column_atts COMMENT STRING { show_log("ATTR COMMENT %s", $3); free($3); $$ = 1<<($1 + 1); }
     ;
 
 opt_length: /* nil */ { $$ = 0; }

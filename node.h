@@ -14,8 +14,8 @@ typedef enum {
 } data_type_e;
 
 typedef enum {
-    COL_ATTR_PRIKEY,
-    COL_ATTR_VALID,
+    COL_ATTR_PRIKEY = 0,
+    COL_ATTR_VALID = 1,
     COL_ATTR_INVALID =10
 } col_attr_e;
 
@@ -40,7 +40,7 @@ typedef struct __ATTR_NODE_HEADER_S__ {
     data_type_e  data_type;
     char *name;
     int varchar_len;
-    bool is_PRIKEY;
+    uint16_t col_attr;
     struct __ATTR_NODE_HEADER_S__ *head;
     struct __ATTR_NODE_HEADER_S__ *tail;
     struct __ATTR_NODE_HEADER_S__ *next;
@@ -70,17 +70,21 @@ typedef struct __TUPLE_NODE_S__{
     struct __TUPLE_NODE_S__ *prev;
 } tuple_t;
 
-typedef struct __CREATE_TABLE_NODE__{
-    char *table_name;
+typedef struct __TABLE_NODE__ table_node_t;
+struct __TABLE_NODE__ {
+    char *name;
     unsigned int attr_num;
-    attr_node_t *attr[MAX_ATTR_NUM]; 
-    unsigned int prim_key_num;
-    attr_node_t *prim_key_attr;
+    attr_node_header_t *attr[MAX_ATTR_NUM]; 
+    unsigned int pkey_num;
+    attr_node_header_t *pkey_attr;
     unsigned int tupleNum;
+
+    bool (*set_attr)(table_node_t *self, attr_node_header_t *attr_node_hdr);
+    void (*add_prikey_attr)(table_node_t *self, attr_node_header_t *pkey_attr);
     tuple_t *tuple_list_head;
     tuple_t *tuple_list_tail;
-    struct __CREATE_TABLE_NODE__ *next;
-} create_table_node_t;
+    struct __TABLE_NODE__ *next;
+};
 
 typedef struct {
     stmt_type_e type;
@@ -127,12 +131,18 @@ typedef struct {
 }insert_stmt_t;
 
 typedef struct {
+    char *table_name;
+    attr_node_header_t *attr_list;
+}cret_tbl_stmt_t;
+
+typedef struct {
     cret_def_e type;
     void *cret_def_info;
 }cret_def_node_t;
 
 
-attr_node_header_t *sql_create_attr(char *name, int data_type, col_attr_e col_attr);
+#define ATTR_PRIKEY (1<<COL_ATTR_PRIKEY)
+attr_node_header_t *sql_create_attr(char *name, int data_type, uint16_t col_attr);
 attr_node_header_t *sql_attr_collect(attr_node_header_t *list, attr_node_header_t *node);
 attr_node_header_t *sql_attr_head_set(attr_node_header_t *head_node);
 void sql_recursive_printf_node(attr_node_header_t *list);
@@ -141,7 +151,7 @@ void sql_handle_table (create_table_node_t *table);
 void sql_printf_attr(attr_node_header_t *node);
 col_node_t *sql_col_list_node_create(char *name, col_node_t *list, bool is_head);
 void sql_print_col_node(col_node_t *list);
-stmt_node_t *sql_insert_stmt_create(stmt_type_e stmt_type, char *table_name, col_node_t *col_name_list, insert_vals_node_t *insr_vals_list);
+stmt_node_t *sql_insert_stmt_create(char *table_name, col_node_t *col_name_list, insert_vals_node_t *insr_vals_list);
 void sql_stmt_handle(stmt_node_t *stmt);
 bool sql_insert_stmt_handle(insert_stmt_t *insr_stmt);
 insert_vals_node_t *sql_insert_vals_node_create(expr_node_t *expr_node, insert_vals_node_t *list, bool is_head);
@@ -150,7 +160,7 @@ void sql_output_insert_result_to_file(insert_stmt_t *stmt);
 attr_node_header_t *sql_cret_def_handle(attr_node_header_t *list, cret_def_node_t *cret_def_node);
 
 cret_def_node_t *sql_cret_def_pk_def_node_create(col_node_t *col_node);
-cret_def_node_t * sql_cret_def_attr_declar_node_create(char *name, int data_type, col_attr_e col_attr);
+cret_def_node_t * sql_cret_def_attr_declar_node_create(char *name, int data_type, uint16_t col_attr);
 void sql_free_attr_header_list(attr_node_header_t *attr_node);
 stmt_node_t *sql_show_table_content(char *name);
 stmt_node_t *sql_show_all_table(void);
