@@ -24,7 +24,7 @@ int yylex();
 	char *strval;
 	int subtok;
 	attr_node_header_t *attr_node;
-	create_table_node_t *table_node;
+	table_node_t *table_node;
 	stmt_node_t *stmt_node;
 	col_node_t *col_node;
 	insert_vals_node_t *insr_node;
@@ -302,9 +302,8 @@ int yylex();
 %type <intval> opt_temporary opt_length opt_binary opt_uz enum_list
 %type <intval> column_atts data_type opt_ignore_replace 
 %type <attr_node> create_col_list
-%type <table_node> create_table_stmt
 %type <col_node> column_list opt_col_names
-%type <stmt_node> insert_stmt stmt show_log_stmt
+%type <stmt_node> create_table_stmt insert_stmt stmt show_log_stmt
 %type <expr_node> expr
 %type <insr_node> insert_vals insert_vals_list
 %type <cret_node> create_definition
@@ -331,7 +330,7 @@ stmt: insert_stmt { $$ = $1 ;}
 insert_stmt: INSERT insert_opts opt_into NAME
      opt_col_names
      VALUES insert_vals_list
-     opt_ondupupdate { $$ = sql_insert_stmt_create($4, $5, $7);show_log("INSERTVALS %d %d %s", $2, $7, $4); free($4); }
+     opt_ondupupdate { $$ = sql_insert_stmt_create($4, $5, $7);show_log("INSERTVALS %d %d %s", $2, $7, $4); }
    ;
 
 insert_stmt: NAME insert_opts opt_into NAME
@@ -404,7 +403,7 @@ insert_asgn_list:
    ;
 
    /** create table **/
-stmt: create_table_stmt { $$ = $1);show_log("STMT"); }
+stmt: create_table_stmt { $$ = $1;show_log("STMT"); }
    ;
 
 create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME
@@ -597,7 +596,7 @@ opt_into_list: /* nil */
    | INTO column_list { show_log("INTO %d", $2); }
    ;
 
-column_list: NAME { show_log("COLUMN %s", $1); $$ = sql_col_list_node_create($1, NULL, true);free($1); }
+column_list: NAME { show_log("COLUMN %s", $1); $$ = sql_col_list_node_create($1, NULL, true); }
   | column_list ',' NAME  { $$ = sql_col_list_node_create($3, $1, false);show_log("COLUMN %s", $3); free($3); }
   ;
 
@@ -984,6 +983,7 @@ int main(int ac, char **av)
   fprintf(output, "log start...\n");
   fclose(output);
 #endif
+  sql_init();
   if(ac > 1 && !strcmp(av[1], "-d")) {
     yydebug = 1; ac--; av++;
   }
