@@ -109,6 +109,7 @@ HOUR_MINUTE	{ return HOUR_MINUTE; }
 HOUR_SECOND	{ return HOUR_SECOND; }
 IF	{ return IF; }
 IGNORE	{ return IGNORE; }
+IMPORT  { return IMPORT;}
 IN	{ return IN; }
 INFILE	{ return INFILE; }
 INNER	{ return INNER; }
