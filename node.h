@@ -28,7 +28,8 @@ typedef enum {
 typedef enum {
     STMT_TYPE_CREATE_TABLE,
     STMT_TYPE_INSERT_TUPLE,
-    STMT_TYPE_SHOW_LOG
+    STMT_TYPE_SHOW_LOG,
+    STMT_TYPE_IMPORT_FILE
 }stmt_type_e;
 
 typedef enum {
@@ -183,5 +184,6 @@ void sql_free_attr_header_list(attr_node_header_t *attr_node);
 stmt_node_t *sql_show_table_content(char *name);
 stmt_node_t *sql_show_all_table(void);
 stmt_node_t *sql_cret_table_stmt_create(char *table_name, attr_node_header_t *attr_list);
+stmt_node_t *sql_import_file(char *name);
 void sql_init(void);
 #endif

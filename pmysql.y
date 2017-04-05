@@ -147,6 +147,7 @@ int yylex();
 %token HOUR_SECOND
 %token IF
 %token IGNORE
+%token IMPORT
 %token IN
 %token INDEX
 %token INFILE
@@ -303,7 +304,7 @@ int yylex();
 %type <intval> column_atts data_type opt_ignore_replace 
 %type <attr_node> create_col_list
 %type <col_node> column_list opt_col_names
-%type <stmt_node> create_table_stmt insert_stmt stmt show_log_stmt
+%type <stmt_node> create_table_stmt insert_stmt stmt show_log_stmt import_file_stmt
 %type <expr_node> expr
 %type <insr_node> insert_vals insert_vals_list
 %type <cret_node> create_definition
@@ -317,11 +318,13 @@ stmt_list: stmt ';' { sql_stmt_handle($1);}
 
 stmt: show_log_stmt {$$=$1;}
     ;
-
-
 show_log_stmt: SHOW NAME { $$ = sql_show_table_content($2); free($2);}
              | SHOW ALL  {$$ = sql_show_all_table();}
              ;
+stmt: import_file_stmt {$$=$1;};
+
+import_file_stmt: IMPORT NAME'.'SQL { $$= sql_import_file($2); show_log("import\n");free($2);}
+                ;
    /* statements: insert statement */
 
 stmt: insert_stmt { $$ = $1 ;}
@@ -597,7 +600,7 @@ opt_into_list: /* nil */
    ;
 
 column_list: NAME { show_log("COLUMN %s", $1); $$ = sql_col_list_node_create($1, NULL, true); }
-  | column_list ',' NAME  { $$ = sql_col_list_node_create($3, $1, false);show_log("COLUMN %s", $3); free($3); }
+  | column_list ',' NAME  { $$ = sql_col_list_node_create($3, $1, false);show_log("COLUMN %s", $3);}
   ;
 
 select_opts:                          { $$ = 0; }
@@ -964,14 +967,15 @@ show_log(char *s, ...)
 void
 yyerror(char *s, ...)
 {
-  extern int yylineno;
+ /*
+ extern int yylineno;
 
   va_list ap;
   va_start(ap, s);
 
   fprintf(stderr, "%d: error: ", yylineno);
   vfprintf(stderr, s, ap);
-  fprintf(stderr, "\n");
+  fprintf(stderr, "\n");*/
 }
 
 int main(int ac, char **av)
@@ -984,6 +988,7 @@ int main(int ac, char **av)
   fclose(output);
 #endif
   sql_init();
+  int i =0;
   if(ac > 1 && !strcmp(av[1], "-d")) {
     yydebug = 1; ac--; av++;
   }
@@ -992,12 +997,18 @@ int main(int ac, char **av)
     perror(av[1]);
     exit(1);
   }
-  while (1) {
+  printf("input file %s\n",av[1]);
+  while (i<10){
   if(!yyparse())
     printf("SQL parse worked\n");
   else {
-        printf("SQL parse failed\n");
-        yyrestart(yyin);
+        if (yychar==YYEOF) {
+            yyin = stdin;
+            yyrestart(yyin);
+        } else
+            printf("SQL parse failed\n");
+        //yyrestart(yyin);
     }
-  }
+    i++;
+    }
 } /* main */

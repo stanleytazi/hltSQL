@@ -7,6 +7,7 @@
 
 #define MAX_TABLE_ENTRY 128
 #define MAX_STMT_NUM_SUPPORT 20
+#define MAX_IMPORT_FILE_NAME_LENGTH 100
 #define CALLOC_MEM(type, n) (type *)calloc((n),sizeof(type))
 #define CALLOC_CHK(node) assert(node && "out of heap\n")            
 
@@ -17,6 +18,7 @@ bool sql_is_dup_tuple_chk(table_node_t *self, tuple_t *new_tuple);
 static tuple_t *sql_tuple_create_and_init(void);
 bool sql_insr_check_col_list_valid(table_node_t *self, col_node_t *colNodeList);
 
+attr_node_header_t *sql_insr_find_attr_in_table(table_node_t *tbl, char *attrName);
 
 
 static inline char *sql_data_type_translate(data_type_e type)
@@ -94,6 +96,7 @@ static table_node_t *sql_cret_tbl_table_create_and_init(char *name)
     tbl->chk_col_list = sql_insr_check_col_list_valid;
     tbl->chk_duplc = sql_is_dup_tuple_chk;
     tbl->add_tuple = sql_add_tuple_to_table;
+    tbl->find_attr = sql_insr_find_attr_in_table;
     return tbl;
 }
 
@@ -942,11 +945,16 @@ col_node_t *sql_col_list_node_create(char *name, col_node_t *list, bool is_head)
     
     col_node_t *cNode = CALLOC_MEM(col_node_t, 1);
     CALLOC_CHK(cNode);
-
     cNode->name = name;
-    cNode->next = list;
-
-    return cNode;
+    if (list) {
+        list->tail->next = cNode;
+        list->tail = cNode;
+        return list;
+    } else {
+        cNode->tail = cNode;
+        cNode->head = cNode;
+        return cNode;
+    }
     /*
     if (name)
         col_node->name = strdup(name);
@@ -1234,6 +1242,25 @@ void sql_insr_tpl_stmt_destroy(stmt_node_t *stmtNd)
     free(insrStmt->table_name);
 }
 
+stmt_node_t *sql_import_file(char *name)
+{
+    FILE *import;
+    extern FILE *yyin;
+    char fileName[MAX_IMPORT_FILE_NAME_LENGTH];
+    if (strlen(name) < (MAX_IMPORT_FILE_NAME_LENGTH-4))
+        strcpy(fileName, name);
+    strcat(fileName,".sql");
+    printf("import file %s\n", fileName);
+    import = fopen(fileName, "r");
+    if (import) {
+        yyin = import;
+    } else {
+        printf("file:%s does not exist\n", fileName);
+    }
+    stmt_node_t *stmt = sql_stmt_act_init();
+    sql_stmt_save(stmt, STMT_TYPE_IMPORT_FILE, NULL);
+    return stmt;
+}
 void sql_init()
 {
     /* stmt destroy function register*/
