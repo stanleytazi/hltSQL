@@ -995,7 +995,7 @@ insert_vals_node_t *sql_insert_vals_node_create(expr_node_t *expr_node, insert_v
 }
 
 
-expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char *varchar_val)
+expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char *varchar_val, char *prefix_val)
 {
     var_node_t *data = CALLOC_MEM(var_node_t, 1);
     CALLOC_CHK(data);
@@ -1010,6 +1010,14 @@ expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char
             break;
         case DATA_TYPE_NAME:
             printf("data type is not support\n");
+            break;
+        //0401
+        case DATA_TYPE_PREFIX:
+            data->varchar_value = strdup(varchar_val);
+            data->varchar_len = strlen(varchar_val)-2;
+            data->prefix_value = strdup(prefix_val);
+            data->prefix_len = strlen(prefix_val)-2;
+            printf("ooooooooo\n");
             break;
         default:
             break;
@@ -1241,6 +1249,235 @@ void sql_insr_tpl_stmt_destroy(stmt_node_t *stmtNd)
     sql_free_insr_vals_node(vals);
     free(insrStmt->table_name);
 }
+//0401//0405//
+select_col_node_t *sql_select_col_node_create(expr_node_t *expr_node, char *alias_name){
+    //return a col_node to select_expr->select_expr_list->select_stmt
+    select_col_node_t *select_col_node = CALLOC_MEM(select_col_node_t, 1);
+    CALLOC_CHK(select_col_node);
+   
+    select_col_node->alias_name = strdup(alias_name);
+    select_col_node->is_star = false;
+
+    if (expr_node == NULL || expr_node->type != EXPR_TYPE_BASIC_VAR || expr_node->expr_info == NULL) {
+        free(select_col_node);
+        printf("\nexpr is wrong!!!--sql_select_col_node_create()\n");
+        return NULL;
+    }
+    else {
+        select_col_node->col_info = (var_node_t *)expr_node->expr_info;
+        return select_col_node;
+    }
+}//0401//0405
+
+select_col_node_t *sql_select_col_list_create(select_col_node_t *col_node, select_col_node_t *list, bool is_head, bool is_star){
+    //return a head col_node to select_expr_list->select_stmt
+    if(is_star){
+        select_col_node_t *select_col_node = CALLOC_MEM(select_col_node_t, 1);
+        CALLOC_CHK(select_col_node);
+        select_col_node->is_star = true;
+        return select_col_node;
+    }
+    
+    if(col_node){
+        if(is_head){
+            col_node->head = col_node;
+            col_node->tail = col_node;
+            return col_node;
+        }
+        else{
+            list->tail->next = col_node;
+            list->tail = col_node;
+            return list;
+        }
+    }
+    else{
+        printf("\ncol_node is NULL!!!---sql_select_col_list_create()\n");
+        return NULL;
+    }
+}//0401//0405//
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+select_table_node_t* sql_select_table_node_create(char *table_name, char *prefix, char *alias_name)
+{
+    //return a table_node to table_factor->table_reference->table_references->select_stmt
+    /*Error condition*/
+    if(table_name == NULL){
+        printf("\nError: table_name is NULL in sql_select_table_node_create().\n");
+        return NULL;
+    }
+    select_table_node_t *table_node = CALLOC_MEM(select_table_node_t, 1);
+    CALLOC_CHK(table_node);
+    var_node_t *var_node = CALLOC_MEM(var_node_t, 1);
+    CALLOC_CHK(var_node);
+    
+    if (alias_name)
+        table_node->alias_name = strdup(alias_name);
+
+    
+    //Check whether it is prefix type or not.
+    if (prefix) {
+        var_node->type = DATA_TYPE_PREFIX;
+        var_node->varchar_value = strdup(table_name);
+        var_node->varchar_len = strlen(table_name)-2;
+        var_node->prefix_value = strdup(prefix);
+        var_node->prefix_len = strlen(prefix)-2;
+        table_node->table_info = var_node;
+        
+    }
+    else {
+        var_node->type = DATA_TYPE_VARCHAR;
+        var_node->varchar_value = strdup(table_name);
+        var_node->varchar_len = strlen(table_name)-2;
+        table_node->table_info = var_node;
+   }
+   return table_node;
+}
+
+select_table_node_t* sql_select_table_list_create(select_table_node_t *table_node, select_table_node_t *list, bool is_head)
+{
+    //return a head table_node to table_references->select_stmt
+    /*Refered to sql_col_list_node_create() */
+    /*Error condition*/
+    if(table_node == NULL){
+        printf("\nError: talbe_node is NULL in sql_select_table_list_create().\n");
+        return NULL;
+    }
+    
+    if (is_head) {
+        table_node->head = table_node;
+        table_node->tail = table_node;
+        table_node->next = NULL;
+        return table_node;
+    }
+    else {
+        list->tail->next = table_node;
+        list->tail = table_node;
+        table_node->head = list;
+        table_node->tail = table_node;
+        table_node->next = NULL;
+        return list;
+   }
+}//0401//0405
+
+expr_node_t* sql_expr_comparison_node_create(cmp_type_e cmp_type, expr_node_t* left, expr_node_t* right)
+{
+    //expr_info in the expr_node returned is a cmp_node
+    //return a expr_node to expr->opt_where->select_stmt
+    
+    /*Error condition*/
+    if (left ==NULL || left->type != EXPR_TYPE_BASIC_VAR || left->expr_info == NULL){
+        printf("\nError: \"left\" error in sql_select_table_list_create().\n");
+        return NULL;
+    }
+    if (right ==NULL || right->type != EXPR_TYPE_BASIC_VAR || right->expr_info == NULL){
+        printf("\nError: \"right\" error in sql_select_table_list_create().\n");
+        return NULL;
+    }
+    
+    /*Countruct comparison_node*/
+    comparison_node_t *comparison_node = CALLOC_MEM(comparison_node_t, 1); 
+    CALLOC_CHK(comparison_node);
+    comparison_node->type = cmp_type;
+    comparison_node->left = (var_node_t *)left->expr_info;
+    comparison_node->right = (var_node_t *)right->expr_info;
+    
+    /*Countruct expr_node*/
+    expr_node_t *expr_node = CALLOC_MEM(expr_node_t, 1);
+    CALLOC_CHK(expr_node);
+    expr_node->type = EXPR_TYPE_COMPARISON;
+    expr_node->expr_info = (void *)comparison_node;
+    return expr_node;
+    
+}//0401//0405
+
+expr_node_t* sql_expr_logic_node_create(lgc_type_e lgc_type, expr_node_t* left, expr_node_t* right)
+{
+    //expr_info in the expr_node returned is a lgc_node
+    //return a expr_node to expr->opt_where->select_stmt
+    
+    /*Error condition*/
+    if (left ==NULL || left->expr_info == NULL){
+        printf("\nError: \"left\" error in sql_select_table_list_create().\n");
+        return NULL;
+    }
+    if (right ==NULL || right->expr_info == NULL){
+        printf("\nError: \"right\" error in sql_select_table_list_create().\n");
+        return NULL;
+    }
+    
+    /*Countruct logic_node*/
+    logic_node_t *logic_node = CALLOC_MEM(logic_node_t, 1);
+    CALLOC_CHK(logic_node);
+    logic_node->type = lgc_type;
+    logic_node->left = left;
+    logic_node->right = right;
+    /*Countruct expr_node*/
+    expr_node_t *expr_node = CALLOC_MEM(expr_node_t, 1);
+    CALLOC_CHK(expr_node);
+    expr_node->type = EXPR_TYPE_LOGIC;
+    expr_node->expr_info = (void *)logic_node;
+    return expr_node;
+}//0401//0405
+
+stmt_node_t *sql_select_stmt_create(stmt_type_e stmt_type, select_col_node_t* select_col_list, select_table_node_t* select_table_list, expr_node_t* select_qualifier)
+{
+    /*Error condition*/
+    if (select_col_list ==NULL || select_col_list->col_info == NULL){
+        printf("\nError: \"select_col_list\" error in sql_select_table_list_create().\n");
+        return NULL;
+    }
+    if (select_table_list ==NULL || select_table_list->table_info == NULL){
+        printf("\nError: \"select_table_list\" error in sql_select_table_list_create().\n");
+        return NULL;
+    }
+    
+    stmt_node_t *stmt_nd = NULL;
+    select_stmt_t *select_stmt = NULL;
+    stmt_nd = sql_stmt_act_init();
+    if (!stmt_nd) {
+        printf("\nno heap mem in sql_select_table_list_create().\n");
+        return NULL;
+    }
+    select_stmt = (select_stmt_t *) malloc(sizeof(select_stmt_t));
+    if (!select_stmt) {
+        printf("\nno heap mem in sql_select_table_list_create().\n");
+        free(stmt_nd);
+        return NULL;
+    }
+    select_stmt->select_col_list = select_col_list;
+    select_stmt->select_table_list = select_table_list;
+    select_stmt->select_qualifier = select_qualifier;
+    
+    stmt_nd->stmt_save(stmt_nd, stmt_type, (void *)select_stmt);
+    return stmt_nd;
+}//0401//0405
+
+bool sql_select_stmt_handle(select_stmt_t *select_stmt)
+{
+    /*Refered to sql_show_table_content() */
+    
+    /*Decode "From" instruction to get the table to use and construct an aliases-table.*/
+    /*Decode "Where" instruction*/
+    /*Decode "Select" instruction*/
+        /*check whether it is aggregation function for every col_node. */
+    return true;   
+}//0401//0405
+
+
+
+
+
+//sql_select_stmt_handle ->(å¯åè) sql_show_table_content
+//sql_select_col_node_create -> easy
+//sql_select_col_list_create -> sql_col_list_node_create
+//sql_select_table_node_create -> easy
+//sql_select_table_list_create -> sql_col_list_node_create
+//sql_expr_comparison_node_create -> easy
+//sql_expr_logic_node_create -> easy
+//sql_select_stmt_create -> easy
+//
+//
+
 
 stmt_node_t *sql_import_file(char *name)
 {

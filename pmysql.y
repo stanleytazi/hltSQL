@@ -29,6 +29,10 @@ int yylex();
 	col_node_t *col_node;
 	insert_vals_node_t *insr_node;
 	expr_node_t *expr_node;
+	char *alias_name;// 0401
+	select_col_node_t *select_col_node;//0401
+	select_table_node_t *table_factor_node;//0401
+	select_table_node_t *select_table_node;//0401
 	cret_def_node_t *cret_node;
 }
 	
@@ -290,10 +294,11 @@ int yylex();
 %token FDATE_ADD FDATE_SUB
 %token FCOUNT
 
-%type <intval> select_opts select_expr_list
+%type <intval> select_opts
 %type <intval> val_list opt_val_list case_list
 %type <intval> groupby_list opt_with_rollup opt_asc_desc
-%type <intval> table_references opt_inner_cross opt_outer
+//%type <intval> table_references opt_inner_cross opt_outer
+%type <intval> opt_inner_cross opt_outer//0401
 %type <intval> left_or_right opt_left_or_right_outer
 %type <intval> index_list opt_for_join
 
@@ -306,6 +311,13 @@ int yylex();
 %type <col_node> column_list opt_col_names
 %type <stmt_node> create_table_stmt insert_stmt stmt show_log_stmt import_file_stmt
 %type <expr_node> expr
+%type <alias_name> opt_as_alias//0401
+%type <select_col_node> select_expr select_expr_list//0401
+%type <table_factor_node> table_factor//0401
+%type <select_table_node> table_reference//0401
+%type <select_table_node> table_references//0401
+%type <expr_node> opt_where//0404
+%type <stmt_node> select_stmt//0404
 %type <insr_node> insert_vals insert_vals_list
 %type <cret_node> create_definition
 %start stmt_list
@@ -436,7 +448,6 @@ create_table_stmt: NAME opt_temporary TABLE opt_if_not_exists NAME '('create_col
 create_table_stmt: CREATE opt_temporary NAME opt_if_not_exists NAME '('create_col_list')' {printf("CREATE TABLE FAIL:\"%s\" should be TABLE\n ", $3);$$=NULL; if ($7) sql_free_attr_header_list($7);free($3);free($5);};
 
 create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME '.' NAME
-create_table_stmt: CREATE opt_temporary TABLE opt_if_not_exists NAME '.' NAME
    '(' create_col_list ')'
    create_select_statement  { show_log("CREATESELECT %d %d 0 %s.%s", $2, $4, $5, $7);
                               free($5); free($7); }
@@ -552,7 +563,7 @@ opt_temporary:   /* nil */ { $$ = 0; }
    /** replace just like insert **/
    /* statements: select statement */
 
-stmt: select_stmt { show_log("STMT"); }
+stmt: select_stmt { $$ = $1; show_log("STMT"); }
    ;
 
 select_stmt: SELECT select_opts select_expr_list
@@ -560,11 +571,11 @@ select_stmt: SELECT select_opts select_expr_list
     | SELECT select_opts select_expr_list
      FROM table_references
      opt_where opt_groupby opt_having opt_orderby opt_limit
-     opt_into_list { show_log("SELECT %d %d %d", $2, $3, $5); } ;
+     opt_into_list { $$ = sql_select_stmt_create(STMT_TYPE_SELECT_TUPLE, $3, $5, $6); show_log("SELECT %d %d %d", $2, $3, $5); } ;//0404
 ;
 
-opt_where: /* nil */ 
-   | WHERE expr { show_log("WHERE"); };
+opt_where: /* nil */ { $$ = NULL;}//0404
+   | WHERE expr { $$ = $2; show_log("WHERE"); };//0404
 
 opt_groupby: /* nil */ 
    | GROUP BY groupby_list opt_with_rollup
@@ -614,15 +625,15 @@ select_opts:                          { $$ = 0; }
 | select_opts SQL_CALC_FOUND_ROWS { if($$ & 0200) yyerror("duplicate SQL_CALC_FOUND_ROWS option"); $$ = $1 | 0200; }
     ;
 
-select_expr_list: select_expr { $$ = 1; }
-    | select_expr_list ',' select_expr {$$ = $1 + 1; }
-    | '*' { show_log("SELECTALL"); $$ = 1; }
+select_expr_list: select_expr { $$ = sql_select_col_list_create($1, NULL, true, false); }//0401
+    | select_expr_list ',' select_expr {$$ = sql_select_col_list_create($3, $1, false, false); }//0401
+    | '*' { show_log("SELECTALL"); $$ = sql_select_col_list_create(NULL, NULL, NULL,true); }//0401
     ;
 
-select_expr: expr opt_as_alias ;
+select_expr: expr opt_as_alias { $$ = sql_select_col_node_create($1, $2); };// 0401 
 
-table_references:    table_reference { $$ = 1; }
-    | table_references ',' table_reference { $$ = $1 + 1; }
+table_references:    table_reference { $$ = sql_select_table_list_create($1, NULL, true); }//0401
+    | table_references ',' table_reference {  $$ = sql_select_table_list_create($3, $1, false); }//0401
     ;
 
 table_reference:  table_factor
@@ -630,9 +641,9 @@ table_reference:  table_factor
 ;
 
 table_factor:
-    NAME opt_as_alias index_hint { show_log("TABLE %s", $1); free($1); }
-  | NAME '.' NAME opt_as_alias index_hint { show_log("TABLE %s.%s", $1, $3);
-                               free($1); free($3); }
+    NAME opt_as_alias index_hint {$$ = sql_select_table_node_create($1, NULL, $2); show_log("TABLE %s", $1); free($1); }//0401
+  | NAME '.' NAME opt_as_alias index_hint {$$ = sql_select_table_node_create($3, $1, $4); show_log("TABLE %s.%s", $1, $3);
+                               free($1); free($3); }//0401
   | table_subquery opt_as NAME { show_log("SUBQUERYAS %s", $3); free($3); }
   | '(' table_references ')' { show_log("TABLEREFERENCES %d", $2); }
   ;
@@ -641,9 +652,9 @@ opt_as: AS
   | /* nil */
   ;
 
-opt_as_alias: AS NAME { show_log ("ALIAS %s", $2); free($2); }
-  | NAME              { show_log ("ALIAS %s", $1); free($1); }
-  | /* nil */
+opt_as_alias: AS NAME { $$ = strdup($2); show_log ("ALIAS %s", $2); free($2); } //0401
+  | NAME              { $$ = strdup($1); show_log ("ALIAS %s", $1); free($1); } //0401 
+  | /* nil */         { $$ = NULL; } //0401
   ;
 
 join_table:
@@ -822,11 +833,11 @@ set_expr:
 
    /**** expressions ****/
 
-expr: NAME          { $$ = sql_expr_basic_data_node_create(DATA_TYPE_NAME, 0, $1);show_log("NAME %s", $1); free($1); }
+expr: NAME          { $$ = sql_expr_basic_data_node_create(DATA_TYPE_NAME, 0, $1, NULL);show_log("NAME %s", $1); free($1); }
    | USERVAR         { show_log("USERVAR %s", $1); free($1); }
-   | NAME '.' NAME { show_log("FIELDNAME %s.%s", $1, $3); free($1); free($3); }
-   | STRING        { $$ = sql_expr_basic_data_node_create(DATA_TYPE_VARCHAR, 0, $1); show_log("STRING %s", $1); free($1); }
-   | INTNUM        { $$ = sql_expr_basic_data_node_create(DATA_TYPE_INT, $1, NULL); show_log("NUMBER %d", $1); }
+   | NAME '.' NAME { $$ = sql_expr_basic_data_node_create(DATA_TYPE_PREFIX, 0, $3, $1);show_log("FIELDNAME %s.%s", $1, $3); free($1); free($3); }
+   | STRING        { $$ = sql_expr_basic_data_node_create(DATA_TYPE_VARCHAR, 0, $1, NULL); show_log("STRING %s", $1); free($1); }
+   | INTNUM        { $$ = sql_expr_basic_data_node_create(DATA_TYPE_INT, $1, NULL, NULL); show_log("NUMBER %d", $1); }
    | APPROXNUM     { show_log("FLOAT %g", $1); }
    | BOOL          { show_log("BOOL %d", $1); }
    ;
@@ -838,10 +849,10 @@ expr: expr '+' expr { show_log("ADD"); }
    | expr '%' expr { show_log("MOD"); }
    | expr MOD expr { show_log("MOD"); }
    | '-' expr %prec UMINUS { show_log("NEG"); }
-   | expr ANDOP expr { show_log("AND"); }
-   | expr OR expr { show_log("OR"); }
+   | expr ANDOP expr {$$ = sql_expr_logic_node_create(LGC_TYPE_AND, $1, $3); show_log("AND"); }//0401
+   | expr OR expr { $$ = sql_expr_logic_node_create(LGC_TYPE_OR, $1, $3); show_log("OR"); }//0401
    | expr XOR expr { show_log("XOR"); }
-   | expr COMPARISON expr { show_log("CMP %d", $2); }
+   | expr COMPARISON expr { $$ = sql_expr_comparison_node_create($2, $1, $3); show_log("CMP %d", $2); }//0401
    | expr COMPARISON '(' select_stmt ')' { show_log("CMPSELECT %d", $2); }
    | expr COMPARISON ANY '(' select_stmt ')' { show_log("CMPANYSELECT %d", $2); }
    | expr COMPARISON SOME '(' select_stmt ')' { show_log("CMPANYSELECT %d", $2); }

@@ -11,11 +11,14 @@ typedef struct __VAR_S__ var_node_t;
 typedef struct __ATTR_NODE_HEADER_S__ attr_node_header_t;
 typedef struct __ATTR_NODE_S__ attr_node_t;
 typedef struct __COL_LIST_NODE_S__ col_node_t;
+typedef struct __TABLE_NODE__ table_node_t;
 typedef enum {
     DATA_TYPE_NAME = 0,
     DATA_TYPE_INT = 50000,
+    DATA_TYPE_PREFIX = 70000,
     DATA_TYPE_VARCHAR = 130000,
-    DATA_TYPE_UNDEFINE = 99999
+    DATA_TYPE_UNDEFINE = 99999,
+    
 } data_type_e;
 
 typedef enum {
@@ -28,13 +31,15 @@ typedef enum {
 typedef enum {
     STMT_TYPE_CREATE_TABLE,
     STMT_TYPE_INSERT_TUPLE,
+    STMT_TYPE_SELECT_TUPLE,
     STMT_TYPE_SHOW_LOG,
     STMT_TYPE_IMPORT_FILE
 }stmt_type_e;
 
 typedef enum {
-    EXPR_TYPE_BASIC_VAR
-
+    EXPR_TYPE_BASIC_VAR,
+    EXPR_TYPE_COMPARISON,
+    EXPR_TYPE_LOGIC
 } expr_type_e;
 
 typedef enum {
@@ -84,7 +89,7 @@ struct __TUPLE_NODE_S__{
     struct __TUPLE_NODE_S__ *prev;
 };
 
-typedef struct __TABLE_NODE__ table_node_t;
+
 struct __TABLE_NODE__ {
     char *name;
     unsigned int attr_num;
@@ -125,6 +130,8 @@ struct __VAR_S__{
     int int_value;
     char *varchar_value;
     int varchar_len;
+    char *prefix_value;
+    int prefix_len;
     struct __VAR_S__ *next;
 };//variable node
 
@@ -159,6 +166,58 @@ typedef struct {
     void *cret_def_info;
 }cret_def_node_t;
 
+typedef enum {
+    CMP_TYPE_GREATER = 2,
+    CMP_TYPE_LESS = 1,
+    CMP_TYPE_EQUAL = 4,
+    CMP_TYPE_NOTEQUAL = 3
+}cmp_type_e;//0401
+
+typedef struct __COMPARISON_S__{
+    cmp_type_e type;
+    var_node_t *left;
+    var_node_t *right;
+} comparison_node_t;//0401
+
+typedef enum {
+    LGC_TYPE_AND,
+    LGC_TYPE_OR
+}lgc_type_e;//0401
+
+typedef struct __LOGIC_S__{
+    lgc_type_e type;
+    expr_node_t *left;
+    expr_node_t *right;
+} logic_node_t;//0401//0405//
+
+
+
+typedef struct __SELECT_COL_LIST_NODE_S__{
+    char *alias_name;
+    var_node_t *col_info;
+    bool is_star;
+    struct __SELECT_COL_LIST_NODE_S__ *head;
+    struct __SELECT_COL_LIST_NODE_S__ *tail;
+    struct __SELECT_COL_LIST_NODE_S__ *next;
+}select_col_node_t;//0401
+
+typedef struct __SELECT_TABLE_LIST_NODE_S__{
+    char *alias_name;
+    var_node_t *table_info;
+    struct __SELECT_TABLE_LIST_NODE_S__ *head;
+    struct __SELECT_TABLE_LIST_NODE_S__ *tail;
+    struct __SELECT_TABLE_LIST_NODE_S__ *next;
+}select_table_node_t;//0401
+
+typedef struct __SELECT_OPT_LIST_NODE_S__{
+    /* Use for COUNT and SUM */
+}select_opt_node_t;//0404
+
+typedef struct {
+    select_col_node_t* select_col_list;
+    select_table_node_t* select_table_list; 
+    expr_node_t* select_qualifier;
+}select_stmt_t;//0404
 
 #define ATTR_PRIKEY (1<<COL_ATTR_PRIKEY)
 attr_node_header_t *sql_create_attr(char *name, int data_type, uint16_t col_attr);
@@ -174,7 +233,7 @@ stmt_node_t *sql_insert_stmt_create(char *table_name, col_node_t *col_name_list,
 void sql_stmt_handle(stmt_node_t *stmt);
 bool sql_insert_stmt_handle(insert_stmt_t *insr_stmt);
 insert_vals_node_t *sql_insert_vals_node_create(expr_node_t *expr_node, insert_vals_node_t *list, bool is_head);
-expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char *varchar_val);
+expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char *varchar_val, char *prefix_val);
 void sql_output_insert_result_to_file(insert_stmt_t *stmt);
 attr_node_header_t *sql_cret_def_handle(attr_node_header_t *list, cret_def_node_t *cret_def_node);
 
@@ -183,6 +242,16 @@ cret_def_node_t * sql_cret_def_attr_declar_node_create(char *name, int data_type
 void sql_free_attr_header_list(attr_node_header_t *attr_node);
 stmt_node_t *sql_show_table_content(char *name);
 stmt_node_t *sql_show_all_table(void);
+select_col_node_t *sql_select_col_node_create(expr_node_t *expr_node, char *alias_name);//0401
+select_col_node_t *sql_select_col_list_create(select_col_node_t *col_node, select_col_node_t *list, bool is_head, bool is_star);//0401
+select_table_node_t *sql_select_table_node_create(char *table_name, char *prefix, char *alias_name);//0401
+select_table_node_t *sql_select_table_list_create(select_table_node_t *talbe_node, select_table_node_t *list, bool is_head);//0401
+expr_node_t *sql_expr_comparison_node_create(cmp_type_e cmp_type, expr_node_t *left, expr_node_t *right);//0401
+expr_node_t* sql_expr_logic_node_create(lgc_type_e lgc_type, expr_node_t* left, expr_node_t* right);//0401
+
+stmt_node_t *sql_select_stmt_create(stmt_type_e stmt_type, select_col_node_t* select_col_list, select_table_node_t* select_table_list, expr_node_t* select_qualifier);//0404
+bool sql_select_stmt_handle(select_stmt_t *select_stmt);
+
 stmt_node_t *sql_cret_table_stmt_create(char *table_name, attr_node_header_t *attr_list);
 stmt_node_t *sql_import_file(char *name);
 void sql_init(void);
