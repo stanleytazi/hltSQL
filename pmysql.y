@@ -312,7 +312,7 @@ int yylex();
 %type <expr_node> expr
 %type <alias_name> opt_as_alias//0401
 %type <select_col_node> select_expr select_expr_list//0401
-%type <select_table_node> table_factor//0401
+%type <select_table_node> table_factor//0401//0409
 %type <select_table_node> table_reference//0401
 %type <select_table_node> table_references//0401
 %type <expr_node> opt_where//0404
