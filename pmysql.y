@@ -31,7 +31,6 @@ int yylex();
 	expr_node_t *expr_node;
 	char *alias_name;// 0401
 	select_col_node_t *select_col_node;//0401
-	//select_table_node_t *table_factor_node;//0401//0409
 	select_table_node_t *select_table_node;//0401
 	cret_def_node_t *cret_node;
 }
