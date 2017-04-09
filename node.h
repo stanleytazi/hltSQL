@@ -2,6 +2,7 @@
 #ifndef __NODE_H__
 #define __NODE_H__
 #include <stdbool.h>
+#include <stdint.h>
 
 #define MAX_ATTR_NUM 20
 #define MAX_VARCHAR_LEN 9999

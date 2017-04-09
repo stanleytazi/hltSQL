@@ -1009,15 +1009,15 @@ expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char
             data->varchar_len = strlen(varchar_val)-2;
             break;
         case DATA_TYPE_NAME:
-            printf("data type is not support\n");
+            data->varchar_value = strdup(varchar_val);
+            data->varchar_len = strlen(varchar_val);
             break;
         //0401
         case DATA_TYPE_PREFIX:
             data->varchar_value = strdup(varchar_val);
-            data->varchar_len = strlen(varchar_val)-2;
+            data->varchar_len = strlen(varchar_val);
             data->prefix_value = strdup(prefix_val);
-            data->prefix_len = strlen(prefix_val)-2;
-            printf("ooooooooo\n");
+            data->prefix_len = strlen(prefix_val);
             break;
         default:
             break;
