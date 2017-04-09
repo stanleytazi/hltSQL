@@ -1254,8 +1254,13 @@ select_col_node_t *sql_select_col_node_create(expr_node_t *expr_node, char *alia
     //return a col_node to select_expr->select_expr_list->select_stmt
     select_col_node_t *select_col_node = CALLOC_MEM(select_col_node_t, 1);
     CALLOC_CHK(select_col_node);
-   
-    select_col_node->alias_name = strdup(alias_name);
+    
+    if(alias_name){
+        select_col_node->alias_name = strdup(alias_name);
+    }   
+    else{
+        select_col_node->alias_name = NULL;
+    }//0409
     select_col_node->is_star = false;
 
     if (expr_node == NULL || expr_node->type != EXPR_TYPE_BASIC_VAR || expr_node->expr_info == NULL) {
