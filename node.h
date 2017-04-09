@@ -40,6 +40,7 @@ typedef enum {
 typedef enum {
     EXPR_TYPE_BASIC_VAR,
     EXPR_TYPE_COMPARISON,
+    EXPR_TYPE_AGGREGATION,
     EXPR_TYPE_LOGIC
 } expr_type_e;
 
@@ -191,6 +192,16 @@ typedef struct __LOGIC_S__{
     expr_node_t *right;
 } logic_node_t;//0401//0405//
 
+typedef enum {
+    AGGR_TYPE_COUNT,
+    AGGR_TYPE_SUM
+}aggregation_type_e;//0409
+
+typedef struct __AGGREGATION_S__{
+    aggregation_type_e type;
+    bool is_star;
+    var_node_t *attr_info;
+} aggregation_node_t;//0409
 
 
 typedef struct __SELECT_COL_LIST_NODE_S__{
@@ -255,6 +266,9 @@ bool sql_select_stmt_handle(select_stmt_t *select_stmt);
 
 stmt_node_t *sql_cret_table_stmt_create(char *table_name, attr_node_header_t *attr_list);
 stmt_node_t *sql_import_file(char *name);
+
+expr_node_t *sql_expr_aggregation_node_create(aggregation_type_e type, bool is_star, expr_node_t *expr_node);
+
 void sql_init(void);
 
 //0409

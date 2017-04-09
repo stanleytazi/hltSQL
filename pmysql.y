@@ -894,8 +894,8 @@ expr: NAME '(' opt_val_list ')' {  show_log("CALL %d %s", $3, $1); free($1); }
    ;
 
   /* functions with special syntax */
-expr: FCOUNT '(' '*' ')' { show_log("COUNTALL"); }
-   | FCOUNT '(' expr ')' { show_log(" CALL 1 COUNT"); } 
+expr: FCOUNT '(' '*' ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_COUNT, true, NULL); show_log("COUNTALL"); }
+   | FCOUNT '(' expr ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_COUNT, false, $3); show_log(" CALL 1 COUNT"); } 
 
 expr: FSUBSTRING '(' val_list ')' {  show_log("CALL %d SUBSTR", $3);}
    | FSUBSTRING '(' expr FROM expr ')' {  show_log("CALL 2 SUBSTR"); }
