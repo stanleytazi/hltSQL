@@ -309,6 +309,10 @@ COUNT    { int c = input(); unput(c);
            if(c == '(') return FCOUNT;
            yylval.strval = strdup(yytext);
            return NAME; }
+SUM    { int c = input(); unput(c);
+           if(c == '(') return FSUM;
+           yylval.strval = strdup(yytext);
+           return NAME; }
 
 [A-Za-z0-9_]*[A-Za-z0-9_]*	{ yylval.strval = strdup(yytext);
                           return NAME; }

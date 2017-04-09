@@ -292,6 +292,7 @@ int yylex();
 %token FTRIM
 %token FDATE_ADD FDATE_SUB
 %token FCOUNT
+%token FSUM
 
 %type <intval> select_opts
 %type <intval> val_list opt_val_list case_list
@@ -891,12 +892,15 @@ expr: expr IN '(' val_list ')'       { show_log("ISIN %d", $4); }
    ;
 
 expr: NAME '(' opt_val_list ')' {  show_log("CALL %d %s", $3, $1); free($1); }
-   ;
+   ; 
 
   /* functions with special syntax */
 expr: FCOUNT '(' '*' ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_COUNT, true, NULL); show_log("COUNTALL"); }
    | FCOUNT '(' expr ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_COUNT, false, $3); show_log(" CALL 1 COUNT"); } 
-
+   
+expr: FSUM '(' '*' ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_SUM, true, NULL); show_log("SUMALL"); }
+   | FSUM '(' expr ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_SUM, false, $3); show_log(" CALL 1 SUM"); } 
+   
 expr: FSUBSTRING '(' val_list ')' {  show_log("CALL %d SUBSTR", $3);}
    | FSUBSTRING '(' expr FROM expr ')' {  show_log("CALL 2 SUBSTR"); }
    | FSUBSTRING '(' expr FROM expr FOR expr ')' {  show_log("CALL 3 SUBSTR"); }
