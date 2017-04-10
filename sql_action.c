@@ -19,8 +19,10 @@ static tuple_t *sql_tuple_create_and_init(void);
 bool sql_insr_check_col_list_valid(table_node_t *self, col_node_t *colNodeList);
 
 attr_node_header_t *sql_insr_find_attr_in_table(table_node_t *tbl, char *attrName);
-
-
+bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList);
+char *sql_sel_find_tbl_name(sel_rec_t *rec, char *pfx);
+bool sql_sel_collect_attr(sel_rec_t *rec, select_col_node_t* colList);
+void printAttrList(sel_rec_t *rec);
 static inline char *sql_data_type_translate(data_type_e type)
 {
     char *type_s = NULL;
@@ -830,6 +832,9 @@ void sql_stmt_handle(stmt_node_t *stmt)
             break;
         case STMT_TYPE_SHOW_LOG:
             //free(stmt);
+        case STMT_TYPE_SELECT_TUPLE:
+            hdlPass = sql_select_stmt_handle((select_stmt_t *)(stmt->stmt_info));
+            break;//0410
         default:
             //printf("invalid stmt\n");
             break;
@@ -1250,11 +1255,25 @@ void sql_insr_tpl_stmt_destroy(stmt_node_t *stmtNd)
     free(insrStmt->table_name);
 }
 //0401//0405//
-select_col_node_t *sql_select_col_node_create(expr_node_t *expr_node, char *alias_name){
+select_col_node_t *sql_select_col_node_create(expr_node_t *expr_node, char *alias_name, bool is_prefix_dot_star){
     //return a col_node to select_expr->select_expr_list->select_stmt
     select_col_node_t *select_col_node = CALLOC_MEM(select_col_node_t, 1);
     CALLOC_CHK(select_col_node);
-    
+    /* if the format is prefix.* */
+    if(is_prefix_dot_star){
+        var_node_t *var_node = CALLOC_MEM(var_node_t, 1);
+        CALLOC_CHK(var_node);
+        var_node->type = DATA_TYPE_PREFIX;
+        var_node->prefix_value = strdup(alias_name);
+        var_node->prefix_len = strlen(alias_name);
+        
+        select_col_node->is_prefix_dot_star  = true;
+        select_col_node->col_info = var_node;
+        select_col_node->is_star = false;
+        select_col_node->is_aggregation = false;
+        return select_col_node;
+    }
+    /*else*/
     if(alias_name){
         select_col_node->alias_name = strdup(alias_name);
     }   
@@ -1269,7 +1288,11 @@ select_col_node_t *sql_select_col_node_create(expr_node_t *expr_node, char *alia
         return NULL;
     }
     else {
-        select_col_node->col_info = (var_node_t *)expr_node->expr_info;
+        if(expr_node->type == EXPR_TYPE_AGGREGATION )
+            select_col_node->is_aggregation = true;
+        else
+            select_col_node->is_aggregation = false;
+        select_col_node->col_info = (void *)expr_node->expr_info;
         return select_col_node;
     }
 }//0401//0405
@@ -1280,6 +1303,8 @@ select_col_node_t *sql_select_col_list_create(select_col_node_t *col_node, selec
         select_col_node_t *select_col_node = CALLOC_MEM(select_col_node_t, 1);
         CALLOC_CHK(select_col_node);
         select_col_node->is_star = true;
+        select_col_node->head = select_col_node;
+        select_col_node->tail = select_col_node;
         return select_col_node;
     }
     
@@ -1323,16 +1348,16 @@ select_table_node_t* sql_select_table_node_create(char *table_name, char *prefix
     if (prefix) {
         var_node->type = DATA_TYPE_PREFIX;
         var_node->varchar_value = strdup(table_name);
-        var_node->varchar_len = strlen(table_name)-2;
+        var_node->varchar_len = strlen(table_name);
         var_node->prefix_value = strdup(prefix);
-        var_node->prefix_len = strlen(prefix)-2;
+        var_node->prefix_len = strlen(prefix);
         table_node->table_info = var_node;
         
     }
     else {
         var_node->type = DATA_TYPE_VARCHAR;
         var_node->varchar_value = strdup(table_name);
-        var_node->varchar_len = strlen(table_name)-2;
+        var_node->varchar_len = strlen(table_name);
         table_node->table_info = var_node;
    }
    return table_node;
@@ -1427,11 +1452,11 @@ expr_node_t* sql_expr_logic_node_create(lgc_type_e lgc_type, expr_node_t* left, 
 stmt_node_t *sql_select_stmt_create(stmt_type_e stmt_type, select_col_node_t* select_col_list, select_table_node_t* select_table_list, expr_node_t* select_qualifier)
 {
     /*Error condition*/
-    if (select_col_list ==NULL || select_col_list->col_info == NULL){
+    if (select_col_list == NULL){
         printf("\nError: \"select_col_list\" error in sql_select_table_list_create().\n");
         return NULL;
     }
-    if (select_table_list ==NULL || select_table_list->table_info == NULL){
+    if (select_table_list == NULL || select_table_list->table_info == NULL){
         printf("\nError: \"select_table_list\" error in sql_select_table_list_create().\n");
         return NULL;
     }
@@ -1457,20 +1482,6 @@ stmt_node_t *sql_select_stmt_create(stmt_type_e stmt_type, select_col_node_t* se
     return stmt_nd;
 }//0401//0405
 
-bool sql_select_stmt_handle(select_stmt_t *select_stmt)
-{
-    /*Refered to sql_show_table_content() */
-    
-    /*Decode "From" instruction to get the table to use and construct an aliases-table.*/
-    /*Decode "Where" instruction*/
-    /*Decode "Select" instruction*/
-        /*check whether it is aggregation function for every col_node. */
-    return true;   
-}//0401//0405
-
-
-
-
 
 //sql_select_stmt_handle ->(å¯åè) sql_show_table_content
 //sql_select_col_node_create -> easy
@@ -1484,16 +1495,39 @@ bool sql_select_stmt_handle(select_stmt_t *select_stmt)
 //
 
 
+bool sql_select_stmt_handle(select_stmt_t *select_stmt)
+{
+    /*Refered to sql_show_table_content() */
+     sel_rec_t rec;
+    memset(&rec, 0, sizeof(sel_rec_t));
+
+    // collect table in rec
+    sql_sel_collect_table(&rec, select_stmt->select_table_list);
+    sql_sel_collect_attr(&rec, select_stmt->select_col_list);
+    /*Decode "From" instruction to get the table to use and construct an aliases-table.*/
+    /*Decode "Where" instruction*/
+    /*Decode "Select" instruction*/
+        /*check whether it is aggregation function for every col_node. */
+    return true;   
+}//0401//0405
+
 bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList)
 {
     int i = 0;
     table_node_t *table = NULL;
     select_table_node_t *selTable = tableList;
+    map_table_name_t *mapTbl;
+    map_table_name_t **mapTblHd = &mapTbl;
     while (selTable) {
         table = sql_find_table(selTable->table_info->varchar_value);
         if (table) {
+            *mapTblHd = CALLOC_MEM(map_table_name_t, 1);
+            CALLOC_CHK(*mapTblHd);
+            (*mapTblHd)->alias = selTable->alias_name;
+            (*mapTblHd)->tableName = selTable->table_info->varchar_value;
             rec->table[i] = table;
             i++;
+            mapTblHd = &((*mapTblHd)->next);
         } else {
             //ERROR
             return false;
@@ -1501,8 +1535,187 @@ bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList)
         selTable = selTable->next;
     }
     rec->tableNum = i;
+    rec->mapTbl = mapTbl;
     return true;
 }
+
+char *sql_sel_find_tbl_name(sel_rec_t *rec, char *pfx)
+{
+    map_table_name_t *mapTbl = rec->mapTbl;
+    while (mapTbl) {
+        if (strcmp(mapTbl->tableName, pfx)== 0 || strcmp(mapTbl->alias, pfx) == 0)
+            return mapTbl->tableName;
+	mapTbl = mapTbl->next;
+    }
+}
+bool sql_sel_collect_attr(sel_rec_t *rec, select_col_node_t* colList)
+{
+    sel_attr_t *alp = NULL;
+    select_col_node_t* clp = colList;
+    bool firstTime = 1;
+    while (clp != NULL){
+        /*Create new attr node.*/
+        sel_attr_t *attr_node = CALLOC_MEM(sel_attr_t, 1);
+        CALLOC_CHK(attr_node);
+        if (firstTime){
+            rec->attr_list = attr_node;
+            alp = attr_node;
+            firstTime = false;
+        }
+        else {
+            alp->next = attr_node;
+            alp = alp->next;
+            alp->next = NULL;
+        }
+        /*Check the col node is what kind of attr node.*/
+        if (clp->is_star){
+            alp->isAggregation = 0;
+            alp->isPrintAll = true;
+            alp->table_Name = NULL; /* for the case prefix.* , the tableName of its attr_node will not be NULL.*/
+            alp->attr_Name = NULL;
+            alp->output_Name = NULL;
+        }
+        else if (clp->is_prefix_dot_star){
+            alp->isAggregation = 0;
+            alp->isPrintAll = true;
+            alp->table_Name =sql_sel_find_tbl_name(rec, ((var_node_t*)clp->col_info)->prefix_value ); 
+            alp->attr_Name = NULL;
+            alp->output_Name = NULL;
+        }
+        else if(clp->is_aggregation){
+            alp->isAggregation = ((aggregation_node_t*)clp->col_info)->type;
+            if (((aggregation_node_t*)clp->col_info)->is_star){
+                alp->isPrintAll = true;
+                alp->table_Name = NULL;
+                alp->attr_Name = NULL;
+                
+                alp->output_Name = CALLOC_MEM(char, 10);
+                CALLOC_CHK(alp->output_Name);
+                if (((aggregation_node_t*)clp->col_info)->type == AGGR_TYPE_COUNT)
+                    strcpy(alp->output_Name, "COUNT(*)");
+                else
+                    strcpy(alp->output_Name, "SUM(*)");
+                    
+            }
+                
+            else {
+                alp->isPrintAll = false;
+                if (((aggregation_node_t*)clp->col_info)->attr_info->type == DATA_TYPE_PREFIX){
+                    
+                    alp->table_Name = sql_sel_find_tbl_name(rec,  ((aggregation_node_t*)clp->col_info)->attr_info->prefix_value ); 
+                    alp->attr_Name = ((aggregation_node_t*)clp->col_info)->attr_info->varchar_value;
+                    
+                    alp->output_Name = CALLOC_MEM(char, 100);
+                    CALLOC_CHK(alp->output_Name);
+                    if (((aggregation_node_t*)clp->col_info)->type == AGGR_TYPE_COUNT){
+                        strcpy(alp->output_Name, "COUNT(");
+                        strcat(alp->output_Name, ((aggregation_node_t*)clp->col_info)->attr_info->prefix_value);
+                        strcat(alp->output_Name, ".");
+                        strcat(alp->output_Name, alp->attr_Name);
+                        strcat(alp->output_Name, ")");
+                    }
+                    else {
+                        strcpy(alp->output_Name, "SUM(");
+                        strcat(alp->output_Name, ((aggregation_node_t*)clp->col_info)->attr_info->prefix_value);
+                        strcat(alp->output_Name, ".");
+                        strcat(alp->output_Name, alp->attr_Name);
+                        strcat(alp->output_Name, ")");
+                    }
+                }
+                else if (((aggregation_node_t*)clp->col_info)->attr_info->type == DATA_TYPE_NAME) {
+                    int i;
+                    for(i = 0; i < MAX_SELECT_JOIN_TABLE; i++){ /*Checkout what table this attr is in*/
+                        if(rec->table[i]->find_attr(rec->table[i], ((aggregation_node_t*)clp->col_info)->attr_info->varchar_value)){
+                            alp->table_Name = rec->table[i]->name; 
+                            break;
+                        }
+                    }
+                    alp->output_Name = CALLOC_MEM(char, 100);
+                    CALLOC_CHK(alp->output_Name);
+                    alp->attr_Name = ((aggregation_node_t*)clp->col_info)->attr_info->varchar_value;
+                    if (((aggregation_node_t*)clp->col_info)->type == AGGR_TYPE_COUNT){
+                        strcpy(alp->output_Name, "COUNT(");
+                        strcat(alp->output_Name, alp->attr_Name);
+                        strcat(alp->output_Name, ")");
+                    }
+                    else {
+                        strcpy(alp->output_Name, "SUM(");
+                        strcat(alp->output_Name, alp->attr_Name);
+                        strcat(alp->output_Name, ")");
+                    }
+                    
+                }
+                
+            }
+        }/*End of aggregation condition*/
+        else{/*A normal select attr*/
+            alp->isAggregation = 0;
+            alp->isPrintAll = false;
+            if (((var_node_t*)clp->col_info)->type == DATA_TYPE_PREFIX){
+                
+                alp->table_Name = sql_sel_find_tbl_name(rec, ((var_node_t*)clp->col_info)->prefix_value); 
+                alp->attr_Name = ((var_node_t*)clp->col_info)->varchar_value;
+                
+                alp->output_Name = CALLOC_MEM(char, 100);
+                CALLOC_CHK(alp->output_Name);
+                strcpy(alp->output_Name, ((var_node_t*)clp->col_info)->prefix_value);
+                strcat(alp->output_Name, ".");
+                strcat(alp->output_Name, alp->attr_Name);
+                
+            }
+            else if (((var_node_t*)clp->col_info)->type == DATA_TYPE_NAME) {
+                int i;
+                for(i = 0; i < MAX_SELECT_JOIN_TABLE; i++){ /*Checkout what table this attr is in*/
+                    if(rec->table[i]->find_attr(rec->table[i], ((var_node_t*)clp->col_info)->varchar_value)){
+                        alp->table_Name = rec->table[i]->name; 
+                        break;
+                    }
+                }
+                alp->output_Name = CALLOC_MEM(char, 100);
+                CALLOC_CHK(alp->output_Name);
+                alp->attr_Name = ((var_node_t*)clp->col_info)->varchar_value;
+                strcpy(alp->output_Name, alp->attr_Name);
+            }
+        }
+        
+        
+        clp = clp->next;
+    }/*End of while loop*/
+    printAttrList(rec);
+}
+
+void printAttrList(sel_rec_t *rec)
+{
+    sel_attr_t *attr_node = rec->attr_list;
+    int c = 0;
+    while(attr_node != NULL)
+    {
+        printf("\nAttr %d:\n", c++);
+        printf("output_Name: %s\n", attr_node->output_Name);
+        if(attr_node->isPrintAll){
+            printf("isAggregation: %d\n", attr_node->isAggregation);
+            printf("isPrintAll: %d\n", attr_node->isPrintAll);
+            if(attr_node->table_Name != NULL)
+                printf("table_Name: %s\n", attr_node->table_Name);
+        }
+        else if(attr_node->isAggregation){
+            printf("isAggregation: %d\n", attr_node->isAggregation);
+            printf("isPrintAll: %d\n", attr_node->isPrintAll);
+            if(attr_node->table_Name != NULL)
+                printf("table_Name: %s\n", attr_node->table_Name);
+            if(attr_node->attr_Name != NULL)
+                printf("attr_Name: %s\n", attr_node->attr_Name);
+        }
+        else{
+            printf("isAggregation: %d\n", attr_node->isAggregation);
+            printf("isPrintAll: %d\n", attr_node->isPrintAll);
+            printf("table_Name: %s\n", attr_node->table_Name);
+            printf("attr_Name: %s\n", attr_node->attr_Name);
+        }
+        attr_node = attr_node->next;
+    }
+}
+
 
 char *sql_transl_alias(char *alias)
 {

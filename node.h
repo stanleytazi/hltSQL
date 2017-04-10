@@ -195,7 +195,7 @@ typedef struct __LOGIC_S__{
 } logic_node_t;//0401//0405//
 
 typedef enum {
-    AGGR_TYPE_COUNT,
+    AGGR_TYPE_COUNT = 1,
     AGGR_TYPE_SUM
 }aggregation_type_e;//0409
 
@@ -208,12 +208,23 @@ typedef struct __AGGREGATION_S__{
 
 typedef struct __SELECT_COL_LIST_NODE_S__{
     char *alias_name;
-    var_node_t *col_info;
+    void *col_info;
     bool is_star;
+    bool is_prefix_dot_star;
+    aggregation_type_e is_aggregation;
     struct __SELECT_COL_LIST_NODE_S__ *head;
     struct __SELECT_COL_LIST_NODE_S__ *tail;
     struct __SELECT_COL_LIST_NODE_S__ *next;
 }select_col_node_t;//0401
+
+typedef struct __SEL_TARGET_ATTR__{
+    char *output_Name; // Use for output. ex: "COUNT(*)" or "Student.ID" or "s.ID"......
+    char *table_Name; // which table is the attr in.
+    char *attr_Name;
+    bool isPrintAll;// for * case
+    bool isAggregation;// for * case
+    struct __SEL_TARGET_ATTR__ *next;
+} sel_attr_t;//0410
 
 typedef struct __SELECT_TABLE_LIST_NODE_S__{
     char *alias_name;
@@ -266,6 +277,12 @@ typedef struct {
     cmp_eval_t *tail;
 } cmp_eval_rec_t;
 
+typedef struct __MAP_TABLE_NAME__ {
+    char *alias;
+    char *tableName;
+    struct __MAP_TABLE_NAME__ *next;
+} map_table_name_t;
+
 typedef struct __SELECT_RECORD__ {
     table_node_t *table[MAX_SELECT_JOIN_TABLE];
     cmp_eval_rec_t cmpForTbl[MAX_SELECT_JOIN_TABLE];
@@ -278,6 +295,8 @@ typedef struct __SELECT_RECORD__ {
     int tableNum;
     int tableRec;
     lgc_type_e lgcOp;
+    sel_attr_t* attr_list;
+    map_table_name_t *mapTbl;
     err_msg_e errMsg;
 } sel_rec_t;
 
@@ -304,7 +323,7 @@ cret_def_node_t * sql_cret_def_attr_declar_node_create(char *name, int data_type
 void sql_free_attr_header_list(attr_node_header_t *attr_node);
 stmt_node_t *sql_show_table_content(char *name);
 stmt_node_t *sql_show_all_table(void);
-select_col_node_t *sql_select_col_node_create(expr_node_t *expr_node, char *alias_name);//0401
+select_col_node_t *sql_select_col_node_create(expr_node_t *expr_node, char *alias_name, bool is_prefix_dot_star);//0401
 select_col_node_t *sql_select_col_list_create(select_col_node_t *col_node, select_col_node_t *list, bool is_head, bool is_star);//0401
 select_table_node_t *sql_select_table_node_create(char *table_name, char *prefix, char *alias_name);//0401
 select_table_node_t *sql_select_table_list_create(select_table_node_t *talbe_node, select_table_node_t *list, bool is_head);//0401

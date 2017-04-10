@@ -1,0 +1,11 @@
+create table student(test int);
+select SUM(*)from student as a1;
+select SUM(test)from student as a1;
+select count(test)from student as a1;
+select student.test from student as a1;
+select a1.test from student as a1;
+select test from student as a1;
+select * from student as a1;
+select a1.* from student as a1;
+select count(student.test)from student as a1;
+select a1.aa, test from student as a1;

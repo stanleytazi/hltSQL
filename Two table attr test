@@ -1,0 +1,6 @@
+create table student(test int);
+create table book(b int);
+select *, SUM(*), count(book.b), sum(a1.test), count(test), a1.test, student.test, book.b, b, book.*, a1.* from student as a1, book;
+select b1.b from student as a1, book as b1; 
+select student.test from student as a1, book as b1; 
+select book.b from student as a1, book as b1; 

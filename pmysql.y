@@ -633,10 +633,12 @@ select_opts:                          { $$ = 0; }
 
 select_expr_list: select_expr { $$ = sql_select_col_list_create($1, NULL, true, false); }//0401
     | select_expr_list ',' select_expr {$$ = sql_select_col_list_create($3, $1, false, false); }//0401
-    | '*' { show_log("SELECTALL"); $$ = sql_select_col_list_create(NULL, NULL, NULL,true); }//0401
+    | '*' { show_log("SELECTALL"); $$ = sql_select_col_list_create(NULL, NULL, true, true); }//0401
     ;
 
-select_expr: expr opt_as_alias { $$ = sql_select_col_node_create($1, $2); };// 0401 
+select_expr: expr opt_as_alias { $$ = sql_select_col_node_create($1, $2, false); }// 0401
+    | NAME '.' '*' { $$ = sql_select_col_node_create(NULL, $1, true); show_log("NAME.*\n"); }
+    ;// 0409
 
 table_references:    table_reference { $$ = sql_select_table_list_create($1, NULL, true); }//0401
     | table_references ',' table_reference {  $$ = sql_select_table_list_create($3, $1, false); }//0401
@@ -901,7 +903,7 @@ expr: NAME '(' opt_val_list ')' {  show_log("CALL %d %s", $3, $1); free($1); }
    ; 
 
   /* functions with special syntax */
-expr: FCOUNT '(' '*' ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_COUNT, true, NULL); show_log("COUNTALL"); }
+expr: FCOUNT '(' '*' ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_COUNT, true, NULL); show_log("COUNTALL "); }
    | FCOUNT '(' expr ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_COUNT, false, $3); show_log(" CALL 1 COUNT"); } 
    
 expr: FSUM '(' '*' ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_SUM, true, NULL); show_log("SUMALL"); }
