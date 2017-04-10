@@ -31,7 +31,6 @@ int yylex();
 	expr_node_t *expr_node;
 	char *alias_name;// 0401
 	select_col_node_t *select_col_node;//0401
-	select_table_node_t *table_factor_node;//0401
 	select_table_node_t *select_table_node;//0401
 	cret_def_node_t *cret_node;
 }
@@ -293,6 +292,7 @@ int yylex();
 %token FTRIM
 %token FDATE_ADD FDATE_SUB
 %token FCOUNT
+%token FSUM
 
 %type <intval> select_opts
 %type <intval> val_list opt_val_list case_list
@@ -313,7 +313,7 @@ int yylex();
 %type <expr_node> expr
 %type <alias_name> opt_as_alias//0401
 %type <select_col_node> select_expr select_expr_list//0401
-%type <table_factor_node> table_factor//0401
+%type <select_table_node> table_factor//0401//0409
 %type <select_table_node> table_reference//0401
 %type <select_table_node> table_references//0401
 %type <expr_node> opt_where//0404
@@ -892,12 +892,15 @@ expr: expr IN '(' val_list ')'       { show_log("ISIN %d", $4); }
    ;
 
 expr: NAME '(' opt_val_list ')' {  show_log("CALL %d %s", $3, $1); free($1); }
-   ;
+   ; 
 
   /* functions with special syntax */
-expr: FCOUNT '(' '*' ')' { show_log("COUNTALL"); }
-   | FCOUNT '(' expr ')' { show_log(" CALL 1 COUNT"); } 
-
+expr: FCOUNT '(' '*' ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_COUNT, true, NULL); show_log("COUNTALL"); }
+   | FCOUNT '(' expr ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_COUNT, false, $3); show_log(" CALL 1 COUNT"); } 
+   
+expr: FSUM '(' '*' ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_SUM, true, NULL); show_log("SUMALL"); }
+   | FSUM '(' expr ')' { $$ = sql_expr_aggregation_node_create(AGGR_TYPE_SUM, false, $3); show_log(" CALL 1 SUM"); } 
+   
 expr: FSUBSTRING '(' val_list ')' {  show_log("CALL %d SUBSTR", $3);}
    | FSUBSTRING '(' expr FROM expr ')' {  show_log("CALL 2 SUBSTR"); }
    | FSUBSTRING '(' expr FROM expr FOR expr ')' {  show_log("CALL 3 SUBSTR"); }

@@ -1009,15 +1009,15 @@ expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char
             data->varchar_len = strlen(varchar_val)-2;
             break;
         case DATA_TYPE_NAME:
-            printf("data type is not support\n");
+            data->varchar_value = strdup(varchar_val);
+            data->varchar_len = strlen(varchar_val);
             break;
         //0401
         case DATA_TYPE_PREFIX:
             data->varchar_value = strdup(varchar_val);
-            data->varchar_len = strlen(varchar_val)-2;
+            data->varchar_len = strlen(varchar_val);
             data->prefix_value = strdup(prefix_val);
-            data->prefix_len = strlen(prefix_val)-2;
-            printf("ooooooooo\n");
+            data->prefix_len = strlen(prefix_val);
             break;
         default:
             break;
@@ -1254,11 +1254,16 @@ select_col_node_t *sql_select_col_node_create(expr_node_t *expr_node, char *alia
     //return a col_node to select_expr->select_expr_list->select_stmt
     select_col_node_t *select_col_node = CALLOC_MEM(select_col_node_t, 1);
     CALLOC_CHK(select_col_node);
-   
-    select_col_node->alias_name = strdup(alias_name);
+    
+    if(alias_name){
+        select_col_node->alias_name = strdup(alias_name);
+    }   
+    else{
+        select_col_node->alias_name = NULL;
+    }//0409
     select_col_node->is_star = false;
 
-    if (expr_node == NULL || expr_node->type != EXPR_TYPE_BASIC_VAR || expr_node->expr_info == NULL) {
+    if (expr_node == NULL || (expr_node->type != EXPR_TYPE_BASIC_VAR && expr_node->type != EXPR_TYPE_AGGREGATION ) || expr_node->expr_info == NULL) {
         free(select_col_node);
         printf("\nexpr is wrong!!!--sql_select_col_node_create()\n");
         return NULL;
@@ -1497,6 +1502,31 @@ stmt_node_t *sql_import_file(char *name)
     stmt_node_t *stmt = sql_stmt_act_init();
     sql_stmt_save(stmt, STMT_TYPE_IMPORT_FILE, NULL);
     return stmt;
+}
+expr_node_t *sql_expr_aggregation_node_create(aggregation_type_e type, bool is_star, expr_node_t *expr_node)
+{
+    /*Error condition*/
+    if (is_star == false && (expr_node == NULL || expr_node->expr_info == NULL || expr_node->type != EXPR_TYPE_BASIC_VAR)){
+        printf("\nError: \"expr_node\" error in sql_expr_aggregation_node_create().\n");
+        return NULL;
+    }
+    
+    /*Countruct aggr_node*/
+    aggregation_node_t *aggregation_node = CALLOC_MEM(aggregation_node_t, 1);
+    CALLOC_CHK(aggregation_node);
+    aggregation_node->type = type;
+    aggregation_node->is_star = is_star;
+    if(is_star)
+        aggregation_node->attr_info = NULL;
+    else
+        aggregation_node->attr_info = expr_node->expr_info;
+    
+    /*Countruct expr_node*/
+    expr_node_t *new_expr_node = CALLOC_MEM(expr_node_t, 1);
+    CALLOC_CHK(new_expr_node);
+    new_expr_node->type = EXPR_TYPE_AGGREGATION;
+    new_expr_node->expr_info = (void *)aggregation_node;
+    return new_expr_node;
 }
 void sql_init()
 {
