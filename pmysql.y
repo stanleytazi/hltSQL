@@ -250,6 +250,7 @@ int yylex();
 %token STRAIGHT_JOIN
 %token TABLE
 %token TEMPORARY
+%token TEST_SEL
 %token TEXT
 %token TERMINATED
 %token THEN
@@ -309,7 +310,7 @@ int yylex();
 %type <intval> column_atts data_type opt_ignore_replace 
 %type <attr_node> create_col_list
 %type <col_node> column_list opt_col_names
-%type <stmt_node> create_table_stmt insert_stmt stmt show_log_stmt import_file_stmt
+%type <stmt_node> create_table_stmt insert_stmt stmt show_log_stmt import_file_stmt test_stmt
 %type <expr_node> expr
 %type <alias_name> opt_as_alias//0401
 %type <select_col_node> select_expr select_expr_list//0401
@@ -338,6 +339,11 @@ stmt: import_file_stmt {$$=$1;};
 import_file_stmt: IMPORT NAME'.'SQL { $$= sql_import_file($2); show_log("import\n");free($2);}
                 ;
    /* statements: insert statement */
+
+stmt: test_stmt {$$=$1;}
+    ;
+test_stmt: TEST_SEL {select_stmt_t *test=sql_test_select();$$=sql_sel_stmt_hdl(test);}
+         ;
 
 stmt: insert_stmt { $$ = $1 ;}
    ;
@@ -1012,7 +1018,7 @@ int main(int ac, char **av)
     exit(1);
   }
   printf("input file %s\n",av[1]);
-  while (i<10){
+  while (1){
   if(!yyparse())
     printf("SQL parse worked\n");
   else {
@@ -1023,6 +1029,5 @@ int main(int ac, char **av)
             printf("SQL parse failed\n");
         //yyrestart(yyin);
     }
-    i++;
     }
 } /* main */

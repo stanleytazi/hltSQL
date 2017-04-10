@@ -110,6 +110,7 @@ HOUR_SECOND	{ return HOUR_SECOND; }
 IF	{ return IF; }
 IGNORE	{ return IGNORE; }
 IMPORT  { return IMPORT;}
+TSEL {return TEST_SEL;}
 IN	{ return IN; }
 INFILE	{ return INFILE; }
 INNER	{ return INNER; }
