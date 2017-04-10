@@ -34,7 +34,8 @@ typedef enum {
     STMT_TYPE_INSERT_TUPLE,
     STMT_TYPE_SELECT_TUPLE,
     STMT_TYPE_SHOW_LOG,
-    STMT_TYPE_IMPORT_FILE
+    STMT_TYPE_IMPORT_FILE,
+    STMT_TYPE_TEST_SEL
 }stmt_type_e;
 
 typedef enum {
@@ -183,7 +184,8 @@ typedef struct __COMPARISON_S__{
 
 typedef enum {
     LGC_TYPE_AND,
-    LGC_TYPE_OR
+    LGC_TYPE_OR,
+     LGC_TYPE_INVALID
 }lgc_type_e;//0401
 
 typedef struct __LOGIC_S__{
@@ -231,6 +233,54 @@ typedef struct {
     expr_node_t* select_qualifier;
 }select_stmt_t;//0404
 
+
+#define MAX_SELECT_JOIN_TABLE 2
+
+typedef enum {
+    ERR_TYPE_DATA_TYPE_NOT_MATCH,
+    ERR_TYPE_ATTR_NOT_EXIST
+} err_msg_e;
+typedef struct __TUPLE_CONN__ tuple_cnn_t;
+struct __TUPLE_CONN__{
+    table_node_t *table;
+    tuple_t *tuple;
+    struct __TUPLE_CONN__ *nextRel;
+    struct __TUPLE_CONN__ *prevRel;
+    struct __TUPLE_CONN__ *siblHead;
+    struct __TUPLE_CONN__ *siblTail;
+    struct __TUPLE_CONN__ *siblNext;
+    struct __TUPLE_CONN__ *siblPrev;
+    struct __TUPLE_CONN__ *next;
+};
+typedef struct __CMP_EVAL_S__ {
+    lgc_type_e type;
+    comparison_node_t *cmp;
+    int cmpL_tblIdx;
+    int cmpR_tblIdx;
+    struct __CMP_EVAL_S__ *next;
+} cmp_eval_t; //comparison evaluation 
+
+typedef struct {
+    
+    cmp_eval_t *head;
+    cmp_eval_t *tail;
+} cmp_eval_rec_t;
+
+typedef struct __SELECT_RECORD__ {
+    table_node_t *table[MAX_SELECT_JOIN_TABLE];
+    cmp_eval_rec_t cmpForTbl[MAX_SELECT_JOIN_TABLE];
+    cmp_eval_t  *cmpJoin;
+    tuple_cnn_t  *current;
+    tuple_cnn_t  *currTail;
+    tuple_cnn_t  *head;
+    tuple_cnn_t  *tail;
+    bool isNoWhere;
+    int tableNum;
+    int tableRec;
+    lgc_type_e lgcOp;
+    err_msg_e errMsg;
+} sel_rec_t;
+
 #define ATTR_PRIKEY (1<<COL_ATTR_PRIKEY)
 attr_node_header_t *sql_create_attr(char *name, int data_type, uint16_t col_attr);
 attr_node_header_t *sql_attr_collect(attr_node_header_t *list, attr_node_header_t *node);
@@ -271,6 +321,13 @@ expr_node_t *sql_expr_aggregation_node_create(aggregation_type_e type, bool is_s
 
 void sql_init(void);
 
+
+/**** TEST FUNC ***/
+
+stmt_node_t *sql_sel_stmt_hdl(select_stmt_t *selStmt);
+select_stmt_t *sql_test_select(void);
+
+/******/
 //0409
 
 #endif

@@ -1484,6 +1484,491 @@ bool sql_select_stmt_handle(select_stmt_t *select_stmt)
 //
 
 
+bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList)
+{
+    int i = 0;
+    table_node_t *table = NULL;
+    select_table_node_t *selTable = tableList;
+    while (selTable) {
+        table = sql_find_table(selTable->table_info->varchar_value);
+        if (table) {
+            rec->table[i] = table;
+            i++;
+        } else {
+            //ERROR
+            return false;
+        }
+        selTable = selTable->next;
+    }
+    rec->tableNum = i;
+    return true;
+}
+
+char *sql_transl_alias(char *alias)
+{
+    return "on working\n";
+}
+int sql_find_table_index_in_rec(sel_rec_t *rec, var_node_t *var)
+{
+    table_node_t *table[MAX_SELECT_JOIN_TABLE];
+    int i = 0;
+    int matchNum = 0;
+    int matchIdx = -1;
+    char *tableName = NULL;
+    if (var->type == DATA_TYPE_PREFIX) {
+        //tableName = sql_transl_alias(var->prefix_value);
+        tableName = var->prefix_value;
+    }   
+    for (i = 0; i < MAX_SELECT_JOIN_TABLE; i++)
+    {
+        if (sql_insr_find_attr_in_table(rec->table[i], var->varchar_value)) {
+            
+            if (var->type == DATA_TYPE_PREFIX && strcasecmp(rec->table[i]->name, tableName)==0) {
+                return i;
+            }
+            else if (var->type == DATA_TYPE_NAME) {
+                matchNum++;
+                matchIdx = i;
+            }
+        }
+    }
+
+    if ( matchNum != 1 ) {
+        //ERROR
+        return -1;
+    }
+    return matchIdx;
+}
+
+void sql_save_cmp_for_tbl_in_rec(sel_rec_t *rec, comparison_node_t *cmp, lgc_type_e lgcType, int idx)
+{
+     cmp_eval_t *cmpEval = CALLOC_MEM(cmp_eval_t, 1);
+     CALLOC_CHK(cmpEval);
+     cmpEval->type = lgcType;
+     cmpEval->cmp  = cmp;
+     if (!rec->cmpForTbl[idx].head) {
+        rec->cmpForTbl[idx].head = cmpEval;
+        rec->cmpForTbl[idx].tail = cmpEval;
+     } else {
+        rec->cmpForTbl[idx].tail->next = cmpEval;
+        rec->cmpForTbl[idx].tail = cmpEval;
+     }
+}
+
+void sql_save_cmp_join_in_rec(sel_rec_t *rec, comparison_node_t *cmp, lgc_type_e lgcType, int idx, int idx2)
+{
+     cmp_eval_t *cmpEval = CALLOC_MEM(cmp_eval_t, 1);
+     CALLOC_CHK(cmpEval);
+     cmpEval->type = lgcType;
+     cmpEval->cmp  = cmp;
+     cmpEval->cmpL_tblIdx = idx;
+     cmpEval->cmpR_tblIdx = idx2;
+     cmpEval->next = rec->cmpJoin;
+     rec->cmpJoin = cmpEval;
+}
+
+void sql_sel_collect_qual(sel_rec_t *rec, expr_node_t *exprList, lgc_type_e lgcType)
+{
+    if (!exprList)
+        rec->isNoWhere = true;
+    else {
+    if (exprList->type == EXPR_TYPE_COMPARISON) {
+        comparison_node_t *cmp = (comparison_node_t *)exprList->expr_info;
+        int idx = -1;
+        int idx2 = -1;
+        int varType = -1;
+        //rec->lgcOp = LGC_TYPE_INVALID;
+        if ((cmp->left->type == DATA_TYPE_PREFIX || cmp->left->type == DATA_TYPE_NAME) 
+          && (cmp->right->type == DATA_TYPE_PREFIX || cmp->right->type == DATA_TYPE_NAME)) {
+            idx = sql_find_table_index_in_rec(rec, cmp->left);
+            idx2 = sql_find_table_index_in_rec(rec, cmp->right);
+            sql_save_cmp_join_in_rec(rec, cmp, lgcType, idx, idx2);
+        } 
+        else if (cmp->left->type == DATA_TYPE_PREFIX || cmp->left->type == DATA_TYPE_NAME) {
+            idx = sql_find_table_index_in_rec(rec, cmp->left);
+            sql_save_cmp_for_tbl_in_rec(rec, cmp, lgcType, idx);
+        }
+        else if (cmp->right->type == DATA_TYPE_PREFIX || cmp->right->type == DATA_TYPE_NAME) {
+            idx = sql_find_table_index_in_rec(rec, cmp->right);
+            sql_save_cmp_for_tbl_in_rec(rec, cmp, lgcType, idx);
+        }
+    }
+    else if (exprList->type == EXPR_TYPE_LOGIC) {
+    
+        logic_node_t *logic = (logic_node_t *)exprList->expr_info;
+        rec->lgcOp = logic->type;
+        sql_sel_collect_qual(rec, logic->left, lgcType);
+        sql_sel_collect_qual(rec, logic->right, logic->type);
+    }
+    }
+}
+
+cmp_eval_t *sql_get_cmp_node(cmp_eval_t **cmpEval)
+{
+    cmp_eval_t *cmpE = *cmpEval;
+    *cmpEval = cmpE->next;
+    return cmpE;
+}
+
+cmp_eval_t *sql_get_cmp_from_table(sel_rec_t *rec, int idx)
+{
+    cmp_eval_t *cmpE = rec->cmpForTbl[idx].head;
+    return cmpE;
+}
+
+bool sql_sel_qualifier(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_t *tuple)
+{
+    if (!cmpEval) return true;
+    comparison_node_t *cmp = cmpEval->cmp;
+    var_node_t *cmpL = cmp->left;
+    bool result = false;
+    attr_node_t *attrNd = tuple->find_attr_vals(tuple, cmpL->varchar_value);
+    if (attrNd) {
+        if (attrNd->header->data_type == cmp->right->type) {
+            switch (cmp->type) {
+                case CMP_TYPE_LESS:
+                    if (cmp->right->type == DATA_TYPE_INT)
+                       result =  (attrNd->value->int_value < cmp->right->int_value);
+                    else
+                        printf("not allowed type for cmp operator: LESS\n");
+                    break;
+                case CMP_TYPE_GREATER:
+                    if (cmp->right->type == DATA_TYPE_INT)
+                       result =  (attrNd->value->int_value > cmp->right->int_value);
+                    else
+                        printf("not allowed type for cmp operator: GREATER\n");
+                    break;
+                case CMP_TYPE_EQUAL:
+                    if (cmp->right->type == DATA_TYPE_INT)
+                       result =  (attrNd->value->int_value == cmp->right->int_value);
+                    else if (cmp->right->type == DATA_TYPE_VARCHAR)
+                        result = (strcmp(attrNd->value->varchar_value, cmp->right->varchar_value) == 0);
+                    else
+                        printf("not allowed type for cmp operator: EQUAL\n");
+                    break;
+                case CMP_TYPE_NOTEQUAL:
+                    if (cmp->right->type == DATA_TYPE_INT)
+                       result =  (attrNd->value->int_value != cmp->right->int_value);
+                    else if (cmp->right->type == DATA_TYPE_VARCHAR)
+                        result = (strcmp(attrNd->value->varchar_value, cmp->right->varchar_value) != 0);
+                    else
+                        printf("not allowed type for cmp operator: EQUAL\n");
+                    break;
+
+                default:
+                    printf("unexpected cmp type\n");
+                    //ERROR
+                    break;
+            }
+            if (cmpEval->next) {
+                if (result) {
+                    switch (cmpEval->next->type)
+                    {
+                        case LGC_TYPE_AND:
+                            result = (result && sql_sel_qualifier(rec, cmpEval->next, tuple));
+                            break;
+                        case LGC_TYPE_OR:
+                            printf("LGC_TYPE_OR\n");
+                            break;
+                        case LGC_TYPE_INVALID:
+                            printf("LGC_TYPE_INVALID\n");
+                        default:
+                            result = false;
+                            break;
+                    }
+                } else {
+                    switch (cmpEval->next->type)
+                    {
+                        case LGC_TYPE_AND:
+                            printf("LGC_TYPE_AND\n");
+                            
+                            break;
+                        case LGC_TYPE_OR:
+                            result = (result || sql_sel_qualifier(rec, cmpEval->next, tuple));
+                            printf("LGC_TYPE_OR\n");
+                            break;
+                        case LGC_TYPE_INVALID:
+                            printf("LGC_TYPE_INVALID\n");
+                        default:
+                            result = false;
+                            break;
+                    }
+                }
+            }
+        } else {
+            // ERROR
+        }
+    } else {
+        // ERROR
+    }
+    return result;
+}
+
+bool sql_sel_compare_attr(cmp_type_e cmpType, attr_node_t *attrL, attr_node_t *attrR)
+{
+    bool result = false;
+    if (attrL->header->data_type == attrR->header->data_type) {
+        switch (cmpType) 
+        {
+            case CMP_TYPE_EQUAL:
+                if(attrL->header->data_type == DATA_TYPE_INT)
+                    result = (attrL->value->int_value == attrR->value->int_value);
+                else if (attrL->header->data_type == DATA_TYPE_VARCHAR)
+                    result = (strcmp(attrL->value->varchar_value, attrR->value->varchar_value) == 0);
+                else
+                    printf("unexpected type\n");
+                break;
+            case CMP_TYPE_LESS:
+                if(attrL->header->data_type == DATA_TYPE_INT)
+                    result = (attrL->value->int_value < attrR->value->int_value);
+                else
+                    printf("unexpected type\n");
+                break;
+            case CMP_TYPE_GREATER:
+                if(attrL->header->data_type == DATA_TYPE_INT)
+                    result = (attrL->value->int_value > attrR->value->int_value);
+                else
+                    printf("unexpected type\n");
+                break;
+            case CMP_TYPE_NOTEQUAL:
+                if(attrL->header->data_type == DATA_TYPE_INT)
+                    result = (attrL->value->int_value != attrR->value->int_value);
+                else if (attrL->header->data_type == DATA_TYPE_VARCHAR)
+                    result = (strcmp(attrL->value->varchar_value, attrR->value->varchar_value) != 0);
+                else
+                    printf("unexpected type\n");
+                break;
+            default:
+                printf("unexpected cmp type\n");
+                break;        
+        }
+    } else {
+        printf("data type not match\n");
+    }
+    return result;
+}
+bool sql_sel_qualifier_join(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_cnn_t *tplCnn)
+{
+    comparison_node_t *cmp = cmpEval->cmp;
+    var_node_t *cmpL = cmp->left;
+    var_node_t *cmpR = cmp->right;
+    var_node_t *cmpThis  = NULL;
+    tuple_t *tuplePrev = tplCnn->tuple;
+    tuple_cnn_t * tplCnnThis = NULL;
+    bool result = false;
+    int idx = -1;
+    attr_node_t *attrPrev= tuplePrev->find_attr_vals(tuplePrev, cmpL->varchar_value);
+    if (!attrPrev) {
+        attrPrev = tuplePrev->find_attr_vals(tuplePrev, cmpR->varchar_value);
+        idx = cmpEval->cmpL_tblIdx;
+        cmpThis = cmpL;
+    } else {
+        idx = cmpEval->cmpR_tblIdx;
+        cmpThis = cmpR;
+    }
+    if (attrPrev) {
+        cmp_eval_t *cmpEvalTbl = sql_get_cmp_from_table(rec, idx);
+        result = (cmpEvalTbl == NULL);
+        table_node_t *table = rec->table[idx];
+        tuple_t *tuple = table->tuple_list_head;
+        bool evalTwo = ((cmpEval!=NULL)&&(cmpEvalTbl!=NULL));
+        attr_node_t *attrThis = NULL;
+        int i;
+        for (i = 0; i < table->tuple_num; i++) {
+            attrThis = tuple->find_attr_vals(tuple, cmpThis->varchar_value);
+            result = result || sql_sel_qualifier(rec, cmpEvalTbl, tuple);
+
+            if (evalTwo) {
+                switch(rec->lgcOp)
+                {
+                    case LGC_TYPE_OR:
+                        result = result || sql_sel_compare_attr(cmpEval->cmp->type, attrPrev, attrThis);
+                        break;
+                    case LGC_TYPE_AND:
+                        result = result && sql_sel_compare_attr(cmpEval->cmp->type, attrPrev, attrThis);
+                        break;
+                    default:
+                        printf("unexpected lgcOp\n");
+                        break;
+                }
+            } else {
+            
+                result = result && ((cmpEval == NULL)||(sql_sel_compare_attr(cmpEval->cmp->type, attrPrev, attrThis)));
+            }
+            if (result) {
+                tplCnnThis = CALLOC_MEM(tuple_cnn_t, 1);
+                CALLOC_CHK(tplCnnThis);
+                tplCnnThis->table = table;
+                tplCnnThis->tuple = tuple;
+                if (!tplCnn->nextRel){
+                    tplCnn->nextRel = tplCnnThis;
+                    tplCnnThis->prevRel = tplCnn;
+                    tplCnn->siblHead = tplCnnThis;
+                    tplCnn->siblTail = tplCnnThis;
+                } else {
+                    tplCnn->siblTail->siblNext = tplCnnThis;
+                    tplCnnThis->siblPrev = tplCnn->siblTail;
+                    tplCnn->siblTail = tplCnnThis;
+                }
+            }
+            tuple = tuple->next;
+        }
+    }
+    return (tplCnn->nextRel != NULL);
+}
+
+
+void sql_save_qual_tuple(sel_rec_t *rec, tuple_cnn_t *tplCnn)
+{
+    if (!rec->head) {
+        rec->head = tplCnn;
+        rec->tail = tplCnn;
+    } else {
+        rec->tail->next = tplCnn;
+        rec->tail = tplCnn;
+    }
+}
+
+  // before entering this func, we should check if WHERE clause exist or not 
+void sql_sel_stmt_qual_tuple(sel_rec_t *rec)
+{
+    if (rec->tableRec < rec->tableNum) {
+        int tblIdx = rec->tableRec;
+        table_node_t *table = rec->table[tblIdx];
+        tuple_t *tuple = table->tuple_list_head;
+        cmp_eval_t *cmpEval = sql_get_cmp_from_table(rec, tblIdx);
+        cmp_eval_t *cmpJoin = rec->cmpJoin;//sql_get_cmp_node(&rec->cmpJoin);
+        tuple_cnn_t *tplCnn = CALLOC_MEM(tuple_cnn_t, 1);
+        CALLOC_CHK(tplCnn);
+        tplCnn->table = table;
+        int i;
+        rec->tableRec++;
+        for (i = 0; i < table->tuple_num; i++) {
+            tplCnn->tuple = tuple;
+            bool result = ((cmpEval == NULL) || (sql_sel_qualifier(rec, cmpEval, tuple)));
+            if ( rec->tableRec < rec->tableNum) {
+                if (cmpJoin && (rec->lgcOp != LGC_TYPE_INVALID)) {
+                    switch (rec->lgcOp)
+                    {
+                        case LGC_TYPE_OR:
+                            result = (result || sql_sel_qualifier_join(rec, cmpJoin, tplCnn));
+                            break;
+                        case LGC_TYPE_AND:
+                        case LGC_TYPE_INVALID:
+                            result = (result && sql_sel_qualifier_join(rec, cmpJoin, tplCnn));
+                            break;
+                        default:
+                            printf("unexpected lgc type\n");
+                    }
+                } else {
+                    result = (result && sql_sel_qualifier_join(rec, cmpJoin, tplCnn));
+                }
+            }
+            if (result) {
+                sql_save_qual_tuple(rec, tplCnn);
+                if (i < (table->tuple_num - 1)) {
+                    tplCnn = CALLOC_MEM(tuple_cnn_t, 1);
+                    CALLOC_CHK(tplCnn);
+                    tplCnn->table = table;
+                }
+            } else {
+                if (i == (table->tuple_num - 1))
+                    free(tplCnn);
+            }
+            tuple = tuple->next;
+        }
+    /*
+    cmp_eval_t *cmpEval = NULL;
+    comparison_node_t *cmp = NULL;
+    tuple_cnn_t *tplCnn = NULL;
+    if (rec->cmpJoin) {
+        cmpEval = sql_get_cmp_node(&rec->cmpJoin);
+        cmp_eval_t *cmpEvalTbl = sql_get_cmp_from_table(rec, cmpEval->cmpL_tblIdx);
+        lgc_type_e lgcType = cmpEval->type;
+        if (cmpEval->type == LGC_TYPE_INVALID) {
+            printf("LGC_TYPE_INVALID\n");
+            if(cmpEvalTbl)
+                lgcType = cmpEvalTbl->type;   
+        }
+        table_node_t *tableL = rec->table[cmpEval->cmpL_tblIdx];
+        //tuple_t *tuple = tableL->get_tuple_head(tableL);
+        tuple_t *tuple = tableL->tuple_list_head;
+        tplCnn = CALLOC_MEM(tuple_cnn_t, 1);
+        CALLOC_CHK(tplCnn);
+        tplCnn->table = tableL;
+        int i;
+        bool result = (cmpEvalTbl == NULL);
+        for (i = 0; i < tableL->tuple_num; i++) {
+            tplCnn->tuple = tuple;
+            switch (lgcType)
+            {
+                case LGC_TYPE_AND:
+                    result = ((result || sql_sel_qualifier(rec, cmpEvalTbl, tuple)) && sql_sel_qualifier_join(rec, cmpEval, tuple));
+                    break;
+                case LGC_TYPE_OR:
+                    result = ((result || sql_sel_qualifier(rec, cmpEvalTbl, tuple)) || sql_sel_qualifier_join(rec, cmpEval, tuple));
+                    break;
+                default:
+                  printf("unhandling case\n");
+                    break;
+            }
+            if (result) {
+                sql_save_qual_tuple(rec, tplCnn);
+                if (i<(tableL->tuple_num-1)){
+                tplCnn = CALLOC_MEM(tuple_cnn_t, 1);
+                CALLOC_CHK(tplCnn);
+                tplCnn->table = tableL;
+            }
+        }
+    } else {
+        cmpEval = sql_get_cmp_from_table(rec, 0);
+        int tmpTblIdx = 0; // test, hard code
+        table_node_t *tableL = rec->table[tmpTblIdx];
+        //tuple_t *tuple = tableL->get_tuple_head(tableL);
+        tplCnn = CALLOC_MEM(tuple_cnn_t, 1);
+        CALLOC_CHK(tplCnn);
+        tplCnn->table = tableL;
+        tuple_t *tuple = tableL->tuple_list_head;
+        int i;
+        for (i = 0; i < tableL->tuple_num; i++) {
+            tplCnn->tuple = tuple;
+            if ( rec->isNoWhere || sql_sel_qualifier(rec, cmpEval, tuple)) {
+                sql_save_qual_tuple(rec, tplCnn);
+                if (i < (tableL->tuple_num-1)) {
+                    tplCnn = CALLOC_MEM(tuple_cnn_t, 1);
+                    CALLOC_CHK(tplCnn);
+                    tplCnn->table = tableL;
+                }
+            }
+            tuple = tuple->next;
+        }
+    }
+*/
+    }
+}
+
+stmt_node_t *sql_sel_stmt_hdl(select_stmt_t *selStmt)
+{
+    sel_rec_t rec;
+    memset(&rec, 0, sizeof(sel_rec_t));
+
+    // collect table in rec
+    sql_sel_collect_table(&rec, selStmt->select_table_list);
+    rec.lgcOp = LGC_TYPE_INVALID;
+    sql_sel_collect_qual(&rec, selStmt->select_qualifier, LGC_TYPE_INVALID);
+    sql_sel_stmt_qual_tuple(&rec);
+    // collect where clause and chk ambiguity
+    // chk select 
+    stmt_node_t *stmt = sql_stmt_act_init();
+    sql_stmt_save(stmt, STMT_TYPE_TEST_SEL, NULL);
+    return stmt;
+    
+}
+
+
+/******/
+
+
 stmt_node_t *sql_import_file(char *name)
 {
     FILE *import;
@@ -1536,4 +2021,137 @@ void sql_init()
     stmt_dstry[STMT_TYPE_CREATE_TABLE] = sql_cret_tbl_stmt_destroy;
     stmt_dstry[STMT_TYPE_INSERT_TUPLE] = sql_insr_tpl_stmt_destroy;
 
+}
+
+
+/**************TEST FUNCTION***************/
+
+#define MAX_TARGET_NUM 1
+#define MAX_TABLE_NUM 2
+
+comparison_node_t *sql_test_make_cmp_node(cmp_type_e cmp_type, 
+                                          data_type_e ltype, 
+                                          char *lPfxVal,
+                                          char *lvalue, 
+                                          data_type_e rtype, 
+                                          char *rPfxVal,
+                                          int rvalInt,
+                                          char *rvalStr)
+{
+
+    comparison_node_t *comp = CALLOC_MEM(comparison_node_t, 1);
+    CALLOC_CHK(comp);
+    var_node_t *varL = CALLOC_MEM(var_node_t, 1);
+    CALLOC_CHK(varL);
+    var_node_t *varR = CALLOC_MEM(var_node_t, 1);
+    CALLOC_CHK(varR);
+    comp->type = cmp_type;
+    comp->left = varL;
+    comp->right = varR;
+    varL->type = ltype;
+    if(ltype == DATA_TYPE_NAME)
+        varL->varchar_value = strdup(lvalue);
+    else{
+        varL->prefix_value = strdup(lPfxVal);
+        varL->varchar_value = strdup(lvalue);
+    }
+    varR->type = rtype;
+    if(rtype==DATA_TYPE_INT)
+        varR->int_value = rvalInt;
+    else if (rtype == DATA_TYPE_VARCHAR || rtype == DATA_TYPE_NAME)
+        varR->varchar_value = strdup(rvalStr);
+    else {
+        varR->prefix_value = strdup(rPfxVal);
+        varR->varchar_value = strdup(rvalStr);
+    }
+
+    return comp;
+
+}
+
+logic_node_t *sql_test_make_logic_node(expr_node_t *L, expr_node_t *R, lgc_type_e lgcType)
+{
+    logic_node_t *logic = CALLOC_MEM(logic_node_t, 1);
+    CALLOC_CHK(logic);
+    logic->type = lgcType;
+    logic->left = L;
+    logic->right= R;
+    return logic;
+}
+select_stmt_t *sql_test_select()
+{
+    
+    select_stmt_t *select = CALLOC_MEM(select_stmt_t, 1);
+    CALLOC_CHK(select);
+    char target [MAX_TARGET_NUM][20] = {
+        "title"
+    };
+    char table [MAX_TABLE_NUM][20] = {
+        "Book",
+        "Author"
+    };
+
+    var_node_t * colNd = NULL;
+    select_col_node_t * sColNd = NULL;
+    select_col_node_t * sColNdHd = NULL;
+    colNd = CALLOC_MEM(var_node_t, 1);
+    CALLOC_CHK(colNd);
+    sColNd = CALLOC_MEM(select_col_node_t, 1);
+    CALLOC_CHK(sColNd);
+    sColNdHd = sColNd;
+    for (int i = 0; i < MAX_TARGET_NUM; i++)
+    {
+        colNd->varchar_value = strdup(target[i]);
+        sColNd->col_info = colNd;
+        if (i<=(MAX_TARGET_NUM-1)){
+            colNd = CALLOC_MEM(var_node_t, 1);
+            CALLOC_CHK(colNd);
+            sColNd->next = CALLOC_MEM(select_col_node_t, 1);
+            CALLOC_CHK(sColNd->next);
+            sColNd = sColNd->next;
+        }
+    }
+    colNd = NULL;
+    select_table_node_t * sTblNd = NULL;
+    select_table_node_t * sTblNdHd = NULL;
+    colNd = CALLOC_MEM(var_node_t, 1);
+    CALLOC_CHK(colNd);
+    sTblNd = CALLOC_MEM(select_table_node_t, 1);
+    CALLOC_CHK(sTblNd);
+    sTblNdHd = sTblNd;
+    for (int i = 0; i < MAX_TABLE_NUM; i++)
+    {
+        colNd->varchar_value = strdup(table[i]);
+        sTblNd->table_info = colNd;
+        if (i<(MAX_TABLE_NUM-1)){
+            colNd = CALLOC_MEM(var_node_t, 1);
+            CALLOC_CHK(colNd);
+            sTblNd->next = CALLOC_MEM(select_table_node_t, 1);
+            CALLOC_CHK(sTblNd->next);
+            sTblNd = sTblNd->next;
+        }
+    }
+
+    expr_node_t * exprL = CALLOC_MEM(expr_node_t, 1);
+    CALLOC_CHK(exprL);
+    exprL->type = EXPR_TYPE_COMPARISON;
+    exprL->expr_info = (void *)sql_test_make_cmp_node(CMP_TYPE_EQUAL, DATA_TYPE_PREFIX, "Book", "authorId", DATA_TYPE_PREFIX, "Author", 0, "authorId"); 
+    
+    expr_node_t * exprR = CALLOC_MEM(expr_node_t, 1);
+    CALLOC_CHK(exprR);
+    exprR->type = EXPR_TYPE_COMPARISON;
+    exprR->expr_info = (void *)sql_test_make_cmp_node(CMP_TYPE_EQUAL, DATA_TYPE_PREFIX, "Author", "name", DATA_TYPE_VARCHAR, NULL, 0, "'Michael Crichton'"); 
+    
+    expr_node_t * expr = CALLOC_MEM(expr_node_t, 1);
+    CALLOC_CHK(expr);
+    expr->type = EXPR_TYPE_LOGIC;
+    expr->expr_info = (void *)sql_test_make_logic_node(exprL, exprR, LGC_TYPE_AND);
+    
+    select_stmt_t *selStmt = CALLOC_MEM(select_stmt_t, 1);
+    CALLOC_CHK(selStmt);
+    selStmt->select_col_list = sColNdHd;
+    selStmt->select_table_list = sTblNdHd;
+    selStmt->select_qualifier = exprL;
+    //selStmt->select_qualifier = NULL;
+    return selStmt;
 }
