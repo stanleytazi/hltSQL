@@ -240,10 +240,18 @@ typedef enum {
     ERR_TYPE_DATA_TYPE_NOT_MATCH,
     ERR_TYPE_ATTR_NOT_EXIST
 } err_msg_e;
+
+typedef struct __MAP_TABLE_NAME__ {
+    char *alias;
+    char *tableName;
+    struct __MAP_TABLE_NAME__ *next;
+} map_table_name_t;
+
 typedef struct __TUPLE_CONN__ tuple_cnn_t;
 struct __TUPLE_CONN__{
     table_node_t *table;
     tuple_t *tuple;
+    int nextQualNum;
     struct __TUPLE_CONN__ *nextRel;
     struct __TUPLE_CONN__ *prevRel;
     struct __TUPLE_CONN__ *siblHead;
@@ -266,10 +274,13 @@ typedef struct {
     cmp_eval_t *tail;
 } cmp_eval_rec_t;
 
+typedef struct __SEL_TARGET_ATTR__ sel_attr_t;
 typedef struct __SELECT_RECORD__ {
     table_node_t *table[MAX_SELECT_JOIN_TABLE];
     cmp_eval_rec_t cmpForTbl[MAX_SELECT_JOIN_TABLE];
     cmp_eval_t  *cmpJoin;
+    sel_attr_t  *attrList;
+    map_table_name_t *mapTbl;
     tuple_cnn_t  *current;
     tuple_cnn_t  *currTail;
     tuple_cnn_t  *head;
@@ -277,9 +288,19 @@ typedef struct __SELECT_RECORD__ {
     bool isNoWhere;
     int tableNum;
     int tableRec;
+    int tupleNum;
     lgc_type_e lgcOp;
     err_msg_e errMsg;
 } sel_rec_t;
+
+struct __SEL_TARGET_ATTR__ {
+    char *newName;
+    char *tableName;
+    char *attrName ;
+    int isPrintAll;
+    struct __SEL_TARGET_ATTR__ *next;
+};
+
 
 #define ATTR_PRIKEY (1<<COL_ATTR_PRIKEY)
 attr_node_header_t *sql_create_attr(char *name, int data_type, uint16_t col_attr);
