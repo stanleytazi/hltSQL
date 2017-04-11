@@ -196,7 +196,7 @@ typedef struct __LOGIC_S__{
 
 typedef enum {
     AGGR_TYPE_COUNT = 1,
-    AGGR_TYPE_SUM
+    AGGR_TYPE_SUM =2
 }aggregation_type_e;//0409
 
 typedef struct __AGGREGATION_S__{
@@ -217,14 +217,6 @@ typedef struct __SELECT_COL_LIST_NODE_S__{
     struct __SELECT_COL_LIST_NODE_S__ *next;
 }select_col_node_t;//0401
 
-typedef struct __SEL_TARGET_ATTR__{
-    char *output_Name; // Use for output. ex: "COUNT(*)" or "Student.ID" or "s.ID"......
-    char *table_Name; // which table is the attr in.
-    char *attr_Name;
-    bool isPrintAll;// for * case
-    bool isAggregation;// for * case
-    struct __SEL_TARGET_ATTR__ *next;
-} sel_attr_t;//0410
 
 typedef struct __SELECT_TABLE_LIST_NODE_S__{
     char *alias_name;
@@ -251,10 +243,18 @@ typedef enum {
     ERR_TYPE_DATA_TYPE_NOT_MATCH,
     ERR_TYPE_ATTR_NOT_EXIST
 } err_msg_e;
+
+typedef struct __MAP_TABLE_NAME__ {
+    char *alias;
+    char *tableName;
+    struct __MAP_TABLE_NAME__ *next;
+} map_table_name_t;
+
 typedef struct __TUPLE_CONN__ tuple_cnn_t;
 struct __TUPLE_CONN__{
     table_node_t *table;
     tuple_t *tuple;
+    int nextQualNum;
     struct __TUPLE_CONN__ *nextRel;
     struct __TUPLE_CONN__ *prevRel;
     struct __TUPLE_CONN__ *siblHead;
@@ -277,16 +277,13 @@ typedef struct {
     cmp_eval_t *tail;
 } cmp_eval_rec_t;
 
-typedef struct __MAP_TABLE_NAME__ {
-    char *alias;
-    char *tableName;
-    struct __MAP_TABLE_NAME__ *next;
-} map_table_name_t;
 
+typedef struct __SEL_TARGET_ATTR__ sel_attr_t;
 typedef struct __SELECT_RECORD__ {
     table_node_t *table[MAX_SELECT_JOIN_TABLE];
     cmp_eval_rec_t cmpForTbl[MAX_SELECT_JOIN_TABLE];
     cmp_eval_t  *cmpJoin;
+    sel_attr_t  *attrList;
     tuple_cnn_t  *current;
     tuple_cnn_t  *currTail;
     tuple_cnn_t  *head;
@@ -294,11 +291,24 @@ typedef struct __SELECT_RECORD__ {
     bool isNoWhere;
     int tableNum;
     int tableRec;
-    lgc_type_e lgcOp;
     sel_attr_t* attr_list;
     map_table_name_t *mapTbl;
+    int tupleNum;
+    lgc_type_e lgcOp;
     err_msg_e errMsg;
 } sel_rec_t;
+
+struct __SEL_TARGET_ATTR__{
+     char *output_Name; /// Use for output. ex: "COUNT(*)" or "Student.ID" or "s.ID"......
+     char *table_Name; // which table is the attr in.
+     char *attr_Name;
+     bool isPrintAll;// for * case
+
+     aggregation_type_e isAggregation;
+     struct __SEL_TARGET_ATTR__ *next;
+} ;//0410
+
+
 
 #define ATTR_PRIKEY (1<<COL_ATTR_PRIKEY)
 attr_node_header_t *sql_create_attr(char *name, int data_type, uint16_t col_attr);
