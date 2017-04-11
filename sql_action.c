@@ -830,6 +830,10 @@ void sql_stmt_handle(stmt_node_t *stmt)
             break;
         case STMT_TYPE_SHOW_LOG:
             //free(stmt);
+        //0410
+        case STMT_TYPE_SELECT_TUPLE:
+            hdlPass = sql_select_stmt_handle((select_stmt_t *)(stmt->stmt_info));
+            break;
         default:
             //printf("invalid stmt\n");
             break;
@@ -1323,16 +1327,16 @@ select_table_node_t* sql_select_table_node_create(char *table_name, char *prefix
     if (prefix) {
         var_node->type = DATA_TYPE_PREFIX;
         var_node->varchar_value = strdup(table_name);
-        var_node->varchar_len = strlen(table_name)-2;
+        var_node->varchar_len = strlen(table_name);//0410
         var_node->prefix_value = strdup(prefix);
-        var_node->prefix_len = strlen(prefix)-2;
+        var_node->prefix_len = strlen(prefix);//0410
         table_node->table_info = var_node;
         
     }
     else {
         var_node->type = DATA_TYPE_VARCHAR;
         var_node->varchar_value = strdup(table_name);
-        var_node->varchar_len = strlen(table_name)-2;
+        var_node->varchar_len = strlen(table_name);//0410
         table_node->table_info = var_node;
    }
    return table_node;
@@ -1460,7 +1464,7 @@ stmt_node_t *sql_select_stmt_create(stmt_type_e stmt_type, select_col_node_t* se
 bool sql_select_stmt_handle(select_stmt_t *select_stmt)
 {
     /*Refered to sql_show_table_content() */
-    
+    /*0410 call sql_select_errchk() here  */
     /*Decode "From" instruction to get the table to use and construct an aliases-table.*/
     /*Decode "Where" instruction*/
     /*Decode "Select" instruction*/
@@ -1489,11 +1493,18 @@ bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList)
     int i = 0;
     table_node_t *table = NULL;
     select_table_node_t *selTable = tableList;
+    map_table_name_t *mapTbl;
+    map_table_name_t **mapTblHd = &mapTbl;
     while (selTable) {
         table = sql_find_table(selTable->table_info->varchar_value);
         if (table) {
+            *mapTblHd = CALLOC_MEM(map_table_name_t, 1);
+            CALLOC_CHK(*mapTblHd);
+            (*mapTblHd)->alias = selTable->alias_name;
+            (*mapTblHd)->tableName = selTable->table_info->varchar_value;
             rec->table[i] = table;
             i++;
+            mapTblHd = &((*mapTblHd)->next);
         } else {
             //ERROR
             return false;
@@ -1501,8 +1512,23 @@ bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList)
         selTable = selTable->next;
     }
     rec->tableNum = i;
+    rec->mapTbl = mapTbl;
     return true;
-}
+}//0411 from hackMD
+
+char *sql_sel_find_tbl_name(sel_rec_t *rec, char *pfx)
+{
+    map_table_name_t *mapTbl = rec->mapTbl;
+    while (mapTbl) {
+        if (strcmp(mapTbl->tableName, pfx)== 0 || strcmp(mapTbl->alias, pfx) == 0)
+            return mapTbl->tableName;
+	mapTbl = mapTbl->next;
+    }
+    return NULL;
+}//0411 from hackMD
+
+
+
 
 char *sql_transl_alias(char *alias)
 {
@@ -2154,4 +2180,232 @@ select_stmt_t *sql_test_select()
     selStmt->select_qualifier = exprL;
     //selStmt->select_qualifier = NULL;
     return selStmt;
+}
+
+//0410 by Li
+bool sql_select_errchk_try(stmt_node_t *stmt_nd){
+    //sql_select_tablename_errchk(stmt_nd, NULL);
+    //sql_select_attrname_errchk(stmt_nd, NULL);
+    sql_select_qulifier_errchk(stmt_nd);
+}//0410 try func
+
+
+bool sql_select_errchk(stmt_node_t *stmt_nd){
+    //
+    return false;
+}//0410
+
+
+
+bool sql_select_tablename_errchk(stmt_node_t *stmt_nd, sel_rec_t *rec){
+    // chk if table_name make sense
+    bool err_exist = false;
+    table_node_t *table1 = NULL;
+    table_node_t *table2 = NULL;
+    select_stmt_t *select_stmt = NULL;
+    select_stmt = stmt_nd->stmt_info;
+    if(select_stmt->select_table_list->next == NULL){
+        table1 = sql_find_table(select_stmt->select_table_list->table_info->varchar_value);
+        if(table1==NULL){
+            printf("\ntable doesn't exist\n");
+            err_exist = true;
+            return err_exist;
+        }
+        else{
+            printf("\nonly one table\ntable name: %s\n", table1->name);
+        }
+    }
+    else{
+        table1 = sql_find_table(select_stmt->select_table_list->table_info->varchar_value);
+        table2 = sql_find_table(select_stmt->select_table_list->next->table_info->varchar_value);
+        if(table1==NULL || table2==NULL){
+            printf("\ntable doesn't exist\n");
+            err_exist = true;
+            return err_exist;
+        }
+        else{
+            printf("\nthere are two tables\n");
+            printf("table1 name: %s\n", table1->name);
+            printf("table2 name: %s\n", table2->name);
+        }
+    }
+    //not yet check if there are two same alias name
+    //if err exist, return true
+    return err_exist;
+}//0410
+
+
+bool sql_select_attrname_errchk(stmt_node_t *stmt_nd, sel_rec_t *rec){
+    bool err_exist = false;
+    table_node_t *table1 = NULL;
+    table_node_t *table2 = NULL;
+    select_stmt_t *select_stmt = NULL;
+    select_stmt = stmt_nd->stmt_info;
+    if(select_stmt->select_table_list->next == NULL){
+        table1 = sql_find_table(select_stmt->select_table_list->table_info->varchar_value);
+    }
+    else{
+        table1 = sql_find_table(select_stmt->select_table_list->table_info->varchar_value);
+        table2 = sql_find_table(select_stmt->select_table_list->next->table_info->varchar_value);
+    }
+    select_col_node_t *attr_chk = select_stmt->select_col_list;
+    bool attr_in_t1 = true;
+    bool attr_in_t2 = true;
+    if(table2==NULL){
+        while(attr_chk!=NULL){
+            attr_in_t1 = true;
+            if(table1->find_attr(table1, attr_chk->col_info->varchar_value)==NULL){
+                attr_in_t1 = false;
+            }
+            if(attr_in_t1==false){
+                printf("\nattrname: %s doesn't exist\n", attr_chk->col_info->varchar_value);
+                err_exist = true;
+                break;
+            }
+            attr_chk = attr_chk->next;
+        }
+    }
+    else if(table2!=NULL){
+        while(attr_chk!=NULL){
+            attr_in_t1 = true;
+            attr_in_t2 = true;
+            if(table1->find_attr(table1, attr_chk->col_info->varchar_value)==NULL){
+                attr_in_t1 = false;
+            }
+            if(table2->find_attr(table2, attr_chk->col_info->varchar_value)==NULL){
+                attr_in_t2 = false;
+            }
+            if(attr_in_t1==false && attr_in_t2==false){
+                err_exist = true;
+                printf("\nattrname: %s doesn't exist\n", attr_chk->col_info->varchar_value);
+                break;
+            }
+            attr_chk = attr_chk->next;
+        }
+    }
+    if(err_exist==false){
+        printf("\nattrs exist\n");
+    }
+    //if err exist, return true
+    return err_exist;
+}//0410
+
+
+bool sql_select_qulifier_errchk(stmt_node_t *stmt_nd){
+    bool err_exist = false;
+    table_node_t *table1 = NULL;
+    table_node_t *table2 = NULL;
+    select_stmt_t *select_stmt = NULL;
+    select_stmt = stmt_nd->stmt_info;
+    if(select_stmt->select_table_list->next == NULL){
+        table1 = sql_find_table(select_stmt->select_table_list->table_info->varchar_value);
+    }
+    else{
+        table1 = sql_find_table(select_stmt->select_table_list->table_info->varchar_value);
+        table2 = sql_find_table(select_stmt->select_table_list->next->table_info->varchar_value);
+    }
+    expr_node_t *expr_node = select_stmt->select_qualifier;
+    if(select_stmt->select_qualifier->type==EXPR_TYPE_COMPARISON){
+        comparison_node_t *comparison_node = select_stmt->select_qualifier->expr_info;
+        int l_datatype = comparison_node->left->type;
+        int r_datatype = comparison_node->right->type;
+        printf("\nleft type: %d\n", comparison_node->left->type);
+        printf("\nright type: %d\n", comparison_node->right->type);
+        if(comparison_node->left->type==DATA_TYPE_NAME){
+            attr_node_header_t *attr_node1 = NULL;
+            attr_node_header_t *attr_node2 = NULL;
+            printf("attr name: %s\n", comparison_node->left->varchar_value);
+            if(table2==NULL){
+                attr_node1 = table1->find_attr(table1, comparison_node->left->varchar_value);
+                if(attr_node1){
+                    l_datatype = attr_node1->data_type;
+                    printf("attr_node datatype: %d\n", attr_node1->data_type);
+                }
+                else{
+                    printf("attr name: %s dosen't exist\n", comparison_node->left->varchar_value);
+                    err_exist = true;
+                    return err_exist;
+                }
+            }
+            else if(table2!=NULL){
+                attr_node1 = table1->find_attr(table1, comparison_node->left->varchar_value);
+                attr_node2 = table2->find_attr(table2, comparison_node->left->varchar_value);
+                if(attr_node1!=NULL && attr_node2==NULL){
+                    l_datatype = attr_node1->data_type;
+                    printf("attr_node datatype: %d\n", attr_node1->data_type);
+                }
+                else if(attr_node1==NULL && attr_node2!=NULL){
+                    l_datatype = attr_node2->data_type;
+                    printf("attr_node datatype: %d\n", attr_node2->data_type);
+                }
+                else if(attr_node1!=NULL && attr_node2!=NULL){
+                    printf("WRONG!: attr is in both table\n");
+                    err_exist = true;
+                    return err_exist;
+                }
+                else{
+                    printf("attr name: %s dosen't exist\n", comparison_node->left->varchar_value);
+                    err_exist = true;
+                    return err_exist;
+                }
+            }
+        }// deal left, get l_datatype
+        
+        if(comparison_node->right->type==DATA_TYPE_NAME){
+            attr_node_header_t *attr_node1 = NULL;
+            attr_node_header_t *attr_node2 = NULL;
+            printf("attr name: %s\n", comparison_node->right->varchar_value);
+            if(table2==NULL){
+                attr_node1 = table1->find_attr(table1, comparison_node->right->varchar_value);
+                if(attr_node1){
+                    r_datatype = attr_node1->data_type;
+                    printf("attr_node datatype: %d\n", attr_node1->data_type);
+                }
+                else{
+                    printf("attr name: %s dosen't exist\n", comparison_node->right->varchar_value);
+                    err_exist = true;
+                    return err_exist;
+                }
+            }
+            else if(table2!=NULL){
+                attr_node1 = table1->find_attr(table1, comparison_node->right->varchar_value);
+                attr_node2 = table2->find_attr(table2, comparison_node->right->varchar_value);
+                if(attr_node1!=NULL && attr_node2==NULL){
+                    r_datatype = attr_node1->data_type;
+                    printf("attr_node datatype: %d\n", attr_node1->data_type);
+                }
+                else if(attr_node1==NULL && attr_node2!=NULL){
+                    r_datatype = attr_node2->data_type;
+                    printf("attr_node datatype: %d\n", attr_node2->data_type);
+                }
+                else if(attr_node1!=NULL && attr_node2!=NULL){
+                    printf("WRONG!: attr is in both table\n");
+                    err_exist = true;
+                    return err_exist;
+                }
+                else{
+                    printf("attr name: %s dosen't exist\n", comparison_node->right->varchar_value);
+                    err_exist = true;
+                    return err_exist;
+                }
+            }
+        }// deal right, get r_datatype
+        if(l_datatype!=r_datatype){
+            err_exist = true;
+            printf("WRONG!: l_datatype != r_datatype\n");
+            return err_exist;
+        }
+        else{
+            printf("l_datatype = %d\n", l_datatype);
+            printf("r_datatype = %d\n", r_datatype);
+        }
+    }
+    else if(select_stmt->select_qualifier->type==EXPR_TYPE_LOGIC){
+        // two cmp
+    }
+    
+    if(err_exist==false){
+        printf("qualifier is right!\n");
+    }
+    return err_exist;
 }

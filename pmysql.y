@@ -569,7 +569,7 @@ opt_temporary:   /* nil */ { $$ = 0; }
    /** replace just like insert **/
    /* statements: select statement */
 
-stmt: select_stmt { $$ = $1; show_log("STMT"); }
+stmt: select_stmt { $$ = $1; show_log("STMT"); sql_select_errchk_try($1);}//0410 try01
    ;
 
 select_stmt: SELECT select_opts select_expr_list

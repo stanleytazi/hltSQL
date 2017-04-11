@@ -265,6 +265,23 @@ typedef struct {
     cmp_eval_t *head;
     cmp_eval_t *tail;
 } cmp_eval_rec_t;
+//0411
+typedef struct __SEL_TARGET_ATTR__{
+    char *output_Name; // Use for output. ex: "COUNT(*)" or "Student.ID" or "s.ID"......
+    char *table_Name; // which table is the attr in.
+    char *attr_Name;
+    bool isPrintAll;// for * case
+    bool isAggregation;// for * case
+    struct __SEL_TARGET_ATTR__ *next;
+} sel_attr_t;//0410
+
+
+typedef struct __MAP_TABLE_NAME__ {
+    char *alias;
+    char *tableName;
+    struct __MAP_TABLE_NAME__ *next;
+} map_table_name_t;//0411
+
 
 typedef struct __SELECT_RECORD__ {
     table_node_t *table[MAX_SELECT_JOIN_TABLE];
@@ -279,7 +296,14 @@ typedef struct __SELECT_RECORD__ {
     int tableRec;
     lgc_type_e lgcOp;
     err_msg_e errMsg;
-} sel_rec_t;
+    sel_attr_t* attr_list;
+    map_table_name_t *mapTbl;//0411 self add
+} sel_rec_t;//0410//0411 P
+
+//0411 from hackMD
+
+
+
 
 #define ATTR_PRIKEY (1<<COL_ATTR_PRIKEY)
 attr_node_header_t *sql_create_attr(char *name, int data_type, uint16_t col_attr);
@@ -328,6 +352,19 @@ stmt_node_t *sql_sel_stmt_hdl(select_stmt_t *selStmt);
 select_stmt_t *sql_test_select(void);
 
 /******/
-//0409
+//0410 errchk
+bool sql_select_errchk_try(stmt_node_t *stmt_nd);
+bool sql_select_errchk(stmt_node_t *stmt_nd);
+bool sql_select_tablename_errchk(stmt_node_t *stmt_nd, sel_rec_t *rec);
+bool sql_select_attrname_errchk(stmt_node_t *stmt_nd, sel_rec_t *rec);
+bool sql_select_qulifier_errchk(stmt_node_t *stmt_nd);
+//sql_select_attrname_errchk()
+
+//0410 errchk
+
+//0411 hackMD
+bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList);
+char *sql_sel_find_tbl_name(sel_rec_t *rec, char *pfx);
+//0411 hackMD
 
 #endif

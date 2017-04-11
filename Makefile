@@ -4,7 +4,7 @@
 CC = cc -g -O0
 LEX = flex
 YACC = bison
-CFLAGS = -DYYDEBUG=1
+CFLAGS=-std=gnu99
 
 ifeq ($(strip $(LOG_TO_FILE)),1)
     LOG_TO_FILE_FLAGS = -DLOG_TO_FILE
