@@ -82,9 +82,14 @@ static void sql_cret_tbl_destroy_table(table_node_t *tbl)
 }
 
 static void sql_add_tuple_to_table(table_node_t *self, tuple_t *tuple) {
-    tuple->next = self->tuple_list_head;
-    self->tuple_list_head = tuple;
-    self->tuple_num ++;
+    if (self->tuple_list_head) {
+        self->tuple_list_tail->next = tuple;
+        self->tuple_list_tail = tuple;
+    } else {
+        self->tuple_list_head = tuple;
+        self->tuple_list_tail = tuple;
+    }
+    self->tuple_num++;
 }
 
 
@@ -1051,6 +1056,7 @@ void sql_print_table(table_node_t *table)
     attr_node_t *attr_nd = NULL; 
     unsigned int bucket_idx = 0;
     bool is_find = false;
+    int tupleNum = table->tuple_num;
         printf("table name: %s\n", table->name);
         int i = 0;
         for (i = 0; i < table->attr_num; i++) {
@@ -1059,9 +1065,9 @@ void sql_print_table(table_node_t *table)
                 printf("(P)");
         }
         printf("\n");
-        if (table->tuple_num) {
+        if (tupleNum) {
         tuple_nd = table->tuple_list_head;
-            while (tuple_nd) {
+            while (tuple_nd && tupleNum > 0) {
                 for (i = 0; i < table->attr_num; i++) {
                     bucket_idx = BKDRHash(table->attr[i]->name) % MAX_TUPLE_ATTR_HASH_SIZE;
                     attr_nd = tuple_nd->attr[bucket_idx];
@@ -1086,6 +1092,7 @@ void sql_print_table(table_node_t *table)
                     }
                 }
                 tuple_nd = tuple_nd->next;
+                tupleNum--;
                 printf("\n");
             }
         }
@@ -1108,53 +1115,16 @@ stmt_node_t *sql_show_table_content(char *name)
         return NULL;
     }
 
-    if (table) {
+    if (table) 
     	sql_print_table(table);
-        /*printf("table name: %s\n", table->name);
-        int i = 0;
-        for (i = 0; i < table->attr_num; i++) {
-            printf("\t%s", table->attr[i]->name);
-            if(table->attr[i]->col_attr&ATTR_PRIKEY)
-                printf("(P)");
-        }
-        printf("\n");
-        if (table->tuple_num) {
-        tuple_nd = table->tuple_list_head;
-            while (tuple_nd) {
-                for (i = 0; i < table->attr_num; i++) {
-                    bucket_idx = BKDRHash(table->attr[i]->name) % MAX_TUPLE_ATTR_HASH_SIZE;
-                    attr_nd = tuple_nd->attr[bucket_idx];
-                    while( attr_nd && attr_nd->header && attr_nd->header->name) {
-                        if (strcasecmp(attr_nd->header->name, table->attr[i]->name) == 0) {
-                            is_find = true;
-                            break;
-                        }
-                        attr_nd = attr_nd->next;
-                    }
-                    if (is_find) {
-                
-                        is_find = false;
-                        if(attr_nd->header->data_type == DATA_TYPE_VARCHAR ) // TODO: may not be right
-                            printf("\t%s", attr_nd->value->varchar_value);
-                        else
-                            printf("\t%d", attr_nd->value->int_value);
-                    
-                    } else {
-                        printf("\tnull");
-                        printf("what?\n");
-                    }
-                }
-                tuple_nd = tuple_nd->next;
-                printf("\n");
-            }
-        }*/
-    } else {
+    else
         printf("error: can not find the table:%s\n", name);
-    }
+
     stmt_node_t *stmt = sql_stmt_act_init();
     sql_stmt_save(stmt, STMT_TYPE_SHOW_LOG, NULL);
     return stmt;
 }
+
 void sql_output_insert_result_to_file(insert_stmt_t *insr_stmt)
 {
 #ifdef SDEBUG
@@ -1604,7 +1574,7 @@ bool sql_sel_collect_attr(sel_rec_t *rec, select_col_node_t* colList)
             alp->isPrintAll = true;
             alp->table_Name =sql_sel_find_tbl_name(rec, ((var_node_t*)clp->col_info)->prefix_value ); 
             alp->attr_Name = NULL;
-            alp->output_Name = NULL;
+            alp->output_Name = strdup(((var_node_t *)clp->col_info)->prefix_value);
         }
         else if(clp->is_aggregation){
             alp->isAggregation = ((aggregation_node_t*)clp->col_info)->type;
@@ -1612,7 +1582,6 @@ bool sql_sel_collect_attr(sel_rec_t *rec, select_col_node_t* colList)
                 alp->isPrintAll = true;
                 alp->table_Name = NULL;
                 alp->attr_Name = NULL;
-                
                 alp->output_Name = CALLOC_MEM(char, 10);
                 CALLOC_CHK(alp->output_Name);
                 if (((aggregation_node_t*)clp->col_info)->type == AGGR_TYPE_COUNT)
@@ -1901,7 +1870,9 @@ cmp_eval_t *sql_get_cmp_node(cmp_eval_t **cmpEval)
 
 cmp_eval_t *sql_get_cmp_from_table(sel_rec_t *rec, int idx)
 {
-    cmp_eval_t *cmpE = rec->cmpForTbl[idx].head;
+    cmp_eval_t *cmpE = NULL;
+    if(idx >= 0)
+        cmpE = rec->cmpForTbl[idx].head;
     return cmpE;
 }
 
@@ -1957,7 +1928,7 @@ bool sql_sel_qualifier(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_t *tuple)
                             result = (result && sql_sel_qualifier(rec, cmpEval->next, tuple));
                             break;
                         case LGC_TYPE_OR:
-                            printf("LGC_TYPE_OR\n");
+                            //printf("LGC_TYPE_OR\n");
                             break;
                         case LGC_TYPE_INVALID:
                             printf("LGC_TYPE_INVALID\n");
@@ -1974,7 +1945,7 @@ bool sql_sel_qualifier(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_t *tuple)
                             break;
                         case LGC_TYPE_OR:
                             result = (result || sql_sel_qualifier(rec, cmpEval->next, tuple));
-                            printf("LGC_TYPE_OR\n");
+                            //printf("LGC_TYPE_OR\n");
                             break;
                         case LGC_TYPE_INVALID:
                             printf("LGC_TYPE_INVALID\n");
@@ -2038,35 +2009,43 @@ bool sql_sel_compare_attr(cmp_type_e cmpType, attr_node_t *attrL, attr_node_t *a
 }
 bool sql_sel_qualifier_join(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_cnn_t *tplCnn)
 {
-    comparison_node_t *cmp = cmpEval->cmp;
-    var_node_t *cmpL = cmp->left;
-    var_node_t *cmpR = cmp->right;
     var_node_t *cmpThis  = NULL;
     tuple_t *tuplePrev = tplCnn->tuple;
     tuple_cnn_t * tplCnnThis = NULL;
     bool result = false;
     int idx = -1;
-    attr_node_t *attrPrev= tuplePrev->find_attr_vals(tuplePrev, cmpL->varchar_value);
-    if (!attrPrev) {
-        attrPrev = tuplePrev->find_attr_vals(tuplePrev, cmpR->varchar_value);
-        idx = cmpEval->cmpL_tblIdx;
-        cmpThis = cmpL;
-    } else {
-        idx = cmpEval->cmpR_tblIdx;
-        cmpThis = cmpR;
+    comparison_node_t *cmp;
+    var_node_t *cmpL = NULL;
+    var_node_t *cmpR = NULL;
+    attr_node_t *attrPrev = NULL;
+    if (cmpEval) {
+        cmp = cmpEval->cmp;
+        cmpL = cmp->left;
+        cmpR = cmp->right;
+        attrPrev= tuplePrev->find_attr_vals(tuplePrev, cmpL->varchar_value);
+        if (!attrPrev) {
+            attrPrev = tuplePrev->find_attr_vals(tuplePrev, cmpR->varchar_value);
+            idx = cmpEval->cmpL_tblIdx;
+            cmpThis = cmpL;
+        } else {
+            idx = cmpEval->cmpR_tblIdx;
+            cmpThis = cmpR;
+        }
     }
-    if (attrPrev) {
+    
+    //if (attrPrev) {
         cmp_eval_t *cmpEvalTbl = sql_get_cmp_from_table(rec, idx);
         result = (cmpEvalTbl == NULL);
-        table_node_t *table = rec->table[idx];
+        table_node_t *table = rec->table[rec->tableRec];// hardcode
         tuple_t *tuple = table->tuple_list_head;
         bool evalTwo = ((cmpEval!=NULL)&&(cmpEvalTbl!=NULL));
         attr_node_t *attrThis = NULL;
         int i;
         int qualTupleNum = 0;
         for (i = 0; i < table->tuple_num; i++) {
-            attrThis = tuple->find_attr_vals(tuple, cmpThis->varchar_value);
-            result = result || sql_sel_qualifier(rec, cmpEvalTbl, tuple);
+            if(cmpThis)
+                attrThis = tuple->find_attr_vals(tuple, cmpThis->varchar_value);
+            result = (result || sql_sel_qualifier(rec, cmpEvalTbl, tuple));
 
             if (evalTwo) {
                 switch(rec->lgcOp)
@@ -2105,7 +2084,7 @@ bool sql_sel_qualifier_join(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_cnn_t *tp
             tuple = tuple->next;
         }
         tplCnn->nextQualNum = qualTupleNum;
-    }
+    //} 
     return (tplCnn->nextRel != NULL);
 }
 
@@ -2157,7 +2136,8 @@ void sql_sel_stmt_qual_tuple(sel_rec_t *rec)
                             printf("unexpected lgc type\n");
                     }
                 } else {
-                    result = (result && sql_sel_qualifier_join(rec, cmpJoin, tplCnn));
+            
+                        result = (result && sql_sel_qualifier_join(rec, cmpJoin, tplCnn));
                 }
             }
             if (result) {
@@ -2304,12 +2284,13 @@ void sql_transl_to_tbl_traverse(sel_rec_t *rec, char *tblInName, attr_node_heade
         bool isRep = false;
 
         tuple_cnn_t *tupleRec = rec->head;
-        tuple_cnn_t *tupleDeep = rec->head;
+        tuple_cnn_t *tupleDeep = tupleRec;;
         while (tupleDeep) {
             if (strcasecmp(tupleDeep->table->name, tblInName) == 0){
                 break;
             }
             tupleDeep = tupleDeep->nextRel;
+            if (!tupleDeep->nextRel) break;
         }
         isRep = (tupleDeep->nextQualNum > 0);
         repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;// should be previos level node
@@ -2318,7 +2299,7 @@ void sql_transl_to_tbl_traverse(sel_rec_t *rec, char *tblInName, attr_node_heade
             attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
         }
         while (tupleAdd) {
-        
+    
             if (repNum == 0) {
                 tupleRec = tupleRec->next;
                 tupleDeep = tupleRec;
@@ -2326,6 +2307,8 @@ void sql_transl_to_tbl_traverse(sel_rec_t *rec, char *tblInName, attr_node_heade
                     if (strcasecmp(tupleDeep->table->name, tblInName) == 0){
                         break;
                     }
+                    if (!tupleDeep->nextRel) break;
+                    
                     tupleDeep = tupleDeep->nextRel;
                 }
                 repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;
@@ -2385,7 +2368,8 @@ void sql_transl_to_tbl(sel_rec_t *rec, table_node_t *tbl)
         
         if (sAttr->isPrintAll && sAttr->isAggregation == 0 ) {
             if (sAttr->table_Name) {
-                char *alias = sql_sel_find_alias_name(rec, sAttr->table_Name);
+                //char *alias = sql_sel_find_alias_name(rec, sAttr->table_Name);
+                char *alias = sAttr->output_Name;
                 for (int j = 0; j < rec->tableNum; j++) {
                     if (strcmp(rec->table[j]->name, sAttr->table_Name) == 0)
                         sql_sel_print_all_attr(rec, rec->table[j], alias ,tbl);
@@ -2399,10 +2383,7 @@ void sql_transl_to_tbl(sel_rec_t *rec, table_node_t *tbl)
         } else if (sAttr->isAggregation > 0) {
             attrHdDst = sql_create_attr(sAttr->output_Name, DATA_TYPE_INT, 0);
             attrHdSrc = sql_look_for_attrHead(rec, sAttr, &tblIdx);
-            //if (sAttr->isPrintAll) {
-                
-            //} else
-                sql_transl_to_tbl_traverse_for_aggr(rec, sAttr->table_Name, attrHdDst, sAttr->attr_Name, attrHdSrc, tbl, sAttr->isAggregation, sAttr->isPrintAll);
+            sql_transl_to_tbl_traverse_for_aggr(rec, sAttr->table_Name, attrHdDst, sAttr->attr_Name, attrHdSrc, tbl, sAttr->isAggregation, sAttr->isPrintAll);
             tbl->tuple_num++;
         } else {
 
@@ -2419,7 +2400,6 @@ void sql_transl_to_tbl(sel_rec_t *rec, table_node_t *tbl)
         sAttr = sAttr->next;
         i++;
     }
-    tbl->tuple_num = rec->tupleNum;
 }
 
 sel_attr_t *sql_make_sel_attr_node(char *newName, char *tblName, char *attrName, bool isAll, aggregation_type_e isAggr)
@@ -2455,11 +2435,58 @@ void sql_sel_temp_select_list_collect(sel_rec_t *rec)
     }
     rec->attr_list = sAttr;
 }
+bool sql_select_tuple_partial_free(tuple_t *tpl)
+{
+    if (!tpl) return true;
+    sql_select_tuple_partial_free(tpl->next);
+    attr_node_t *attrNdHd;
+    attr_node_t *attrNext;
+    for (int i = 0; i <MAX_TUPLE_ATTR_HASH_SIZE; i++) {
+        if (tpl->attr[i]) {
+            attrNdHd = tpl->attr[i];
+            while (attrNdHd) {
+                attrNext = attrNdHd->next;
+                free(attrNdHd);
+                attrNdHd = attrNext;
+            }
+        }
+    }
+    return false;
+}
+bool sql_select_tuple_all_free(tuple_t *tpl)
+{
+    if (!tpl) return true;
+    sql_select_tuple_all_free(tpl->next);
+    attr_node_t *attrNdHd;
+    attr_node_t *attrNext;
+    for (int i = 0; i <MAX_TUPLE_ATTR_HASH_SIZE; i++) {
+        if (tpl->attr[i]) {
+            attrNdHd = tpl->attr[i];
+            while (attrNdHd) {
+                attrNext = attrNdHd->next;
+                free(attrNdHd->value);
+                free(attrNdHd);
+                attrNdHd = attrNext;
+            }
+        }
+    }
+    return false;
+}
+void sql_select_vrt_table_free(sel_rec_t *rec, table_node_t *tbl)
+{
+    sql_select_tuple_partial_free(tbl->tuple_list_head);
+    for (int i = 0; i < tbl->attr_num; i++) {
+        if (tbl->attr[i]) {
+            free(tbl->attr[i]->name);
+            free(tbl->attr[i]);
+        }
+    }
+    free(tbl->name);
+}
 
 bool sql_select_stmt_handle(select_stmt_t *selStmt)
 {
     /*Refered to sql_show_table_content() */
-    
     /*Decode "From" instruction to get the table to use and construct an aliases-table.*/
     /*Decode "Where" instruction*/
     /*Decode "Select" instruction*/
@@ -2468,11 +2495,10 @@ bool sql_select_stmt_handle(select_stmt_t *selStmt)
     sel_rec_t rec;
     memset(&rec, 0, sizeof(sel_rec_t));
     memset(&tbl, 0, sizeof(table_node_t));
+    rec.lgcOp = LGC_TYPE_INVALID;
     // collect table in rec
     sql_sel_collect_table(&rec, selStmt->select_table_list);
     sql_sel_collect_attr(&rec, selStmt->select_col_list);
-    //sql_sel_temp_select_list_collect(&rec);
-    rec.lgcOp = LGC_TYPE_INVALID;
     sql_sel_collect_qual(&rec, selStmt->select_qualifier, LGC_TYPE_INVALID);
     sql_sel_stmt_qual_tuple(&rec);
     tuple_t *tupleHead = sql_sel_create_qual_tuple_for_output(rec.tupleNum);
@@ -2480,40 +2506,11 @@ bool sql_select_stmt_handle(select_stmt_t *selStmt)
     tbl.tuple_list_head = tupleHead;
     sql_transl_to_tbl(&rec, &tbl);
     sql_print_table(&tbl);
-    // collect where clause and chk ambiguity
-    stmt_node_t *stmt = sql_stmt_act_init();
-    sql_stmt_save(stmt, STMT_TYPE_TEST_SEL, NULL);
-    return stmt;
+    sql_select_vrt_table_free(&rec, &tbl);
     return true;   
-}//0401//0405
-
-stmt_node_t *sql_sel_stmt_hdl(select_stmt_t *selStmt)
-{
-    table_node_t tbl;
-    sel_rec_t rec;
-    memset(&rec, 0, sizeof(sel_rec_t));
-    memset(&tbl, 0, sizeof(table_node_t));
-    // collect table in rec
-    sql_sel_collect_table(&rec, selStmt->select_table_list);
-    sql_sel_temp_select_list_collect(&rec);
-    rec.lgcOp = LGC_TYPE_INVALID;
-    sql_sel_collect_qual(&rec, selStmt->select_qualifier, LGC_TYPE_INVALID);
-    sql_sel_stmt_qual_tuple(&rec);
-    tuple_t *tupleHead = sql_sel_create_qual_tuple_for_output(rec.tupleNum);
-    
-    //tbl.add_tuple(&tbl, tupleHead);
-    tbl.tuple_list_head = tupleHead;
-    sql_transl_to_tbl(&rec, &tbl);
-    sql_print_table(&tbl);
-    // collect where clause and chk ambiguity
-    stmt_node_t *stmt = sql_stmt_act_init();
-    sql_stmt_save(stmt, STMT_TYPE_TEST_SEL, NULL);
-    return stmt;
-    
 }
 
 
-/******/
 
 
 stmt_node_t *sql_import_file(char *name)
@@ -2535,6 +2532,7 @@ stmt_node_t *sql_import_file(char *name)
     sql_stmt_save(stmt, STMT_TYPE_IMPORT_FILE, NULL);
     return stmt;
 }
+
 expr_node_t *sql_expr_aggregation_node_create(aggregation_type_e type, bool is_star, expr_node_t *expr_node)
 {
     /*Error condition*/
@@ -2576,6 +2574,30 @@ void sql_init()
 #define MAX_TARGET_NUM 1
 #define MAX_TABLE_NUM 2
 
+stmt_node_t *sql_sel_stmt_hdl(select_stmt_t *selStmt)
+{
+    table_node_t tbl;
+    sel_rec_t rec;
+    memset(&rec, 0, sizeof(sel_rec_t));
+    memset(&tbl, 0, sizeof(table_node_t));
+    // collect table in rec
+    sql_sel_collect_table(&rec, selStmt->select_table_list);
+    sql_sel_temp_select_list_collect(&rec);
+    rec.lgcOp = LGC_TYPE_INVALID;
+    sql_sel_collect_qual(&rec, selStmt->select_qualifier, LGC_TYPE_INVALID);
+    sql_sel_stmt_qual_tuple(&rec);
+    tuple_t *tupleHead = sql_sel_create_qual_tuple_for_output(rec.tupleNum);
+    
+    //tbl.add_tuple(&tbl, tupleHead);
+    tbl.tuple_list_head = tupleHead;
+    sql_transl_to_tbl(&rec, &tbl);
+    sql_print_table(&tbl);
+    // collect where clause and chk ambiguity
+    stmt_node_t *stmt = sql_stmt_act_init();
+    sql_stmt_save(stmt, STMT_TYPE_TEST_SEL, NULL);
+    return stmt;
+    
+}
 comparison_node_t *sql_test_make_cmp_node(cmp_type_e cmp_type, 
                                           data_type_e ltype, 
                                           char *lPfxVal,
