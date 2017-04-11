@@ -1,3 +1,4 @@
+
 CREATE TABLE Book (
 bookId int PRIMARY KEY,
 title varchar(30),

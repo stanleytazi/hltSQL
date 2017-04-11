@@ -1302,6 +1302,7 @@ select_col_node_t *sql_select_col_node_create(expr_node_t *expr_node, char *alia
         select_col_node->alias_name = NULL;
     }//0409
     select_col_node->is_star = false;
+    select_col_node->is_prefix_dot_star  = false;
 
     if (expr_node == NULL || (expr_node->type != EXPR_TYPE_BASIC_VAR && expr_node->type != EXPR_TYPE_AGGREGATION ) || expr_node->expr_info == NULL) {
         free(select_col_node);
@@ -1326,6 +1327,7 @@ select_col_node_t *sql_select_col_list_create(select_col_node_t *col_node, selec
         select_col_node->is_star = true;
         select_col_node->head = select_col_node;
         select_col_node->tail = select_col_node;
+        select_col_node->next = NULL;
         return select_col_node;
     }
     
@@ -1333,11 +1335,13 @@ select_col_node_t *sql_select_col_list_create(select_col_node_t *col_node, selec
         if(is_head){
             col_node->head = col_node;
             col_node->tail = col_node;
+            col_node->next = NULL;
             return col_node;
         }
         else{
             list->tail->next = col_node;
             list->tail = col_node;
+            col_node->next = NULL;
             return list;
         }
     }
@@ -2507,6 +2511,9 @@ bool sql_select_stmt_handle(select_stmt_t *selStmt)
         printf("Select statement error\n");
         return false; 
     }
+    else {
+        printf("Start select:\n");
+    }
     sql_sel_collect_attr(&rec, selStmt->select_col_list);
     sql_sel_collect_qual(&rec, selStmt->select_qualifier, LGC_TYPE_INVALID);
     sql_sel_stmt_qual_tuple(&rec);
@@ -2745,12 +2752,15 @@ bool sql_select_errchk(sel_rec_t *rec, select_stmt_t *selStmt)
     
     error = sql_select_tablename_errchk(rec, selStmt->select_table_list);
     if(error) return true;
+    else printf("Valid table name\n");
     
     error = sql_select_attrname_errchk(rec, selStmt->select_col_list);
     if(error) return true;
+    else printf("Valid attr list\n");
     
     error = sql_select_qulifier_errchk(rec, selStmt->select_qualifier);
     if(error) return true;
+    else printf("Valid qulifier\n");
     
     return error;
 }//0410
@@ -2846,8 +2856,8 @@ bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t * expr_node){
     comparison_node_t *comparison_node = expr_node->expr_info;//
     int l_datatype = comparison_node->left->type;
     int r_datatype = comparison_node->right->type;
-    printf("\nleft type: %d\n", comparison_node->left->type);
-    printf("\nright type: %d\n", comparison_node->right->type);
+    printf("left type: %d\n", comparison_node->left->type);
+    printf("right type: %d\n", comparison_node->right->type);
     
     
     if(comparison_node->left->type==DATA_TYPE_NAME || comparison_node->left->type==DATA_TYPE_PREFIX){
@@ -2855,7 +2865,7 @@ bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t * expr_node){
         attr_node_header_t *attr_node2 = NULL;
         if(sql_select_var_node_errchk(rec, comparison_node->left)){
             err_exist = true;
-            printf("\nWRONG!: left val_node\n");
+            printf("Error! left val_node\n");
             return err_exist;
         }
         else{
@@ -2887,7 +2897,7 @@ bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t * expr_node){
         attr_node_header_t *attr_node2 = NULL;
         if(sql_select_var_node_errchk(rec, comparison_node->right)){
             err_exist = true;
-            printf("\nWRONG!: right val_node\n");
+            printf("Error! right val_node\n");
             return err_exist;
         }
         else{
@@ -2914,7 +2924,7 @@ bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t * expr_node){
     }// deal right, get r_datatype
     if(l_datatype!=r_datatype){
         err_exist = true;
-        printf("WRONG!: l_datatype != r_datatype\n");
+        printf("\nError! l_datatype != r_datatype\n\n");
         return err_exist;
     }
     else{
@@ -2942,8 +2952,9 @@ bool sql_select_attrname_errchk(sel_rec_t *rec, select_col_node_t *attr_chk){
         else if (!(attr_chk->is_star)){
             
             if (attr_chk->is_aggregation){
-                if ( sql_select_var_node_errchk(rec, ((aggregation_node_t*)attr_chk->col_info)->attr_info) )
-                    return true;
+                if(!((aggregation_node_t*)attr_chk->col_info)->is_star)
+                    if ( sql_select_var_node_errchk(rec, ((aggregation_node_t*)attr_chk->col_info)->attr_info) )
+                        return true;
             }
             else{
                 if ( sql_select_var_node_errchk(rec, (var_node_t*)attr_chk->col_info) )
@@ -2964,24 +2975,24 @@ bool sql_select_var_node_errchk(sel_rec_t *rec, var_node_t *var_node)
     {
         case DATA_TYPE_NAME:
             if( sql_select_data_type_name_errchk(rec, var_node) ){
-                printf("\nVar node: DATA_TYPE_NAME error\n");
+                printf("Var node: DATA_TYPE_NAME error\n");
                 return true;
             }
             break;
         case DATA_TYPE_PREFIX:
             if (sql_select_data_type_prefix_errchk(rec, var_node)){
-                printf("\nVar node: DATA_TYPE_NAME error\n");
+                printf("Var node: DATA_TYPE_PREFIX error\n");
                 return true;
             }
             break;
         case DATA_TYPE_PREFIX_STAR:
             if (sql_select_data_type_prefix_star_errchk(rec, var_node)){
-                printf("\nVar node: DATA_TYPE_NAME error\n");
+                printf("Var node: DATA_TYPE_PREFIX_STAR error\n");
                 return true;
             }
             break;
         default:
-            printf("error: unknown data type\n");
+            printf("\nError! unknown data type\n");
             return true;
             break;
     }
@@ -2997,7 +3008,7 @@ bool sql_select_data_type_prefix_star_errchk(sel_rec_t *rec, var_node_t *var_nod
         return false;
     }
     else {
-        printf("Table %s was Not Found.\n", var_node->prefix_value);
+        printf("\nError! Table %s was Not Found.\n", var_node->prefix_value);
         return true;
     }
 }
@@ -3012,12 +3023,12 @@ bool sql_select_data_type_prefix_errchk(sel_rec_t *rec, var_node_t *var_node)
         if (tablePointer->find_attr(tablePointer, var_node->varchar_value))
             return false;
         else {
-            printf("\nattrname: %s doesn't in the table.\n", var_node->varchar_value);
+            printf("\nError! attrname: %s doesn't in the table.\n\n", var_node->varchar_value);
             return true;
         }
     }
     else {
-        printf("Table %s was Not Found.\n", var_node->prefix_value);
+        printf("\nError! Table %s was Not Found.\n\n", var_node->prefix_value);
         return true;
     }
 }
@@ -3039,11 +3050,11 @@ bool sql_select_data_type_name_errchk(sel_rec_t *rec, var_node_t *var_node)
         else break;
     }
     if(tableNumbersWithAttr > 1){
-        printf("\nAmbiguous! attrname: %s is not in only one table\n", var_node->varchar_value);
+        printf("\nError! attrname: %s is not in only one table\n\n", var_node->varchar_value);
         return true;
     }
     else if(tableNumbersWithAttr < 1){
-        printf("\nattrname: %s doesn't in the tables.\n", var_node->varchar_value);
+        printf("\nError! nattrname: %s doesn't in the tables.\n\n", var_node->varchar_value);
         return true;
     }
     else {

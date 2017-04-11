@@ -212,7 +212,7 @@ typedef struct __SELECT_COL_LIST_NODE_S__{
     void *col_info;
     bool is_star;
     bool is_prefix_dot_star;
-    aggregation_type_e is_aggregation;
+    bool is_aggregation;
     struct __SELECT_COL_LIST_NODE_S__ *head;
     struct __SELECT_COL_LIST_NODE_S__ *tail;
     struct __SELECT_COL_LIST_NODE_S__ *next;
