@@ -1993,6 +1993,90 @@ void sql_attr_node_header_cpy(attr_node_header_t *dst, attr_node_header_t *src)
     dst->col_attr = src->col_attr;
 }
 
+typedef  int (*aggrFunc)(int *accum, int new);
+
+void sql_transl_to_tbl_traverse_for_aggr(sel_rec_t *rec, char *tblInName, attr_node_header_t *attrHd, char* attrName, attr_node_header_t *attrHdSrc, table_node_t *tblOut, aggregation_type_e  aggreType, bool isPrintAll)
+{
+        tuple_t *tupleAdd = tblOut->tuple_list_head;
+        int tupleNum = rec->tupleNum;
+        attr_node_t *attrNd = NULL;
+        tuple_t *tupleTgt = NULL;
+        attr_node_value_t *attrVal = NULL;
+        attr_node_value_t *attrValAggr = NULL;
+        int aggrValue = 0;
+        int tblIdx = -1;
+        int repNum = 0;
+        bool isRep = false;
+        data_type_e dataType;
+
+        if (isPrintAll) {
+            aggrValue = rec->tupleNum;
+            goto GEN_TUPLE;
+        }
+        if (attrHdSrc)
+            dataType = attrHdSrc->data_type;
+        tuple_cnn_t *tupleRec = rec->head;
+        tuple_cnn_t *tupleDeep = rec->head;
+        while (tupleDeep) {
+            if (strcasecmp(tupleDeep->table->name, tblInName) == 0){
+                break;
+            }
+            tupleDeep = tupleDeep->nextRel;
+        }
+        isRep = (tupleDeep->nextQualNum > 0);
+        repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;// should be previos level node
+        if (isRep) {
+            tupleTgt = tupleDeep->tuple;   
+            attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+        }
+        while (tupleNum > 0) {
+            tupleNum--;
+            if (repNum == 0) {
+                tupleRec = tupleRec->next;
+                tupleDeep = tupleRec;
+                while (tupleDeep) {
+                    if (strcasecmp(tupleDeep->table->name, tblInName) == 0){
+                        break;
+                    }
+                    tupleDeep = tupleDeep->nextRel;
+                }
+                repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;
+                if (isRep) {
+                    tupleTgt = tupleDeep->tuple;   
+                    attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+                }
+            }
+            if (!isRep) {
+                tupleTgt = tupleDeep->tuple;
+                attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+                tupleDeep = tupleDeep->siblNext;
+            }
+            if (aggreType == AGGR_TYPE_COUNT) {
+                if (attrVal)//NULL value  can't be count
+                    aggrValue++;
+            } else if (aggreType == AGGR_TYPE_SUM) {
+                if (dataType == DATA_TYPE_INT)
+                    aggrValue+=attrVal->int_value;
+                else
+                    printf("not support aggr sum for this type\n");
+            }
+            //tupleAdd->add_attr_vals(tupleAdd, attrNd);
+            //tupleAdd = tupleAdd->next;
+            repNum--;
+        }
+
+GEN_TUPLE:
+        attrNd = CALLOC_MEM(attr_node_t, 1);
+        CALLOC_CHK(attrNd);
+        attrValAggr = CALLOC_MEM(attr_node_value_t, 1);
+        CALLOC_CHK(attrValAggr);
+        attrValAggr->int_value = aggrValue;
+        attrNd->header = attrHd;
+        attrNd->value = attrValAggr;
+        tblOut->attr[tblOut->attr_num] = attrHd;
+        tblOut->attr_num++;
+        tupleAdd->add_attr_vals(tupleAdd, attrNd);
+}
 void sql_transl_to_tbl_traverse(sel_rec_t *rec, char *tblInName, attr_node_header_t *attrHd, char* attrName, table_node_t *tblOut)
 {
         tuple_t *tupleAdd = tblOut->tuple_list_head;
@@ -2078,11 +2162,12 @@ void sql_transl_to_tbl(sel_rec_t *rec, table_node_t *tbl)
 {
     sel_attr_t *sAttr = rec->attrList;
     int i = 0;
+    int tblIdx = -1;
     tbl->name = strdup("tmp");
     attr_node_header_t *attrHdDst, *attrHdSrc;
     while (sAttr) {
         
-        if (sAttr->isPrintAll) {
+        if (sAttr->isPrintAll && sAttr->isAggregation == 0 ) {
             if (sAttr->table_Name) {
                 char *alias = sql_sel_find_alias_name(rec, sAttr->table_Name);
                 for (int j = 0; j < rec->tableNum; j++) {
@@ -2094,72 +2179,34 @@ void sql_transl_to_tbl(sel_rec_t *rec, table_node_t *tbl)
                     sql_sel_print_all_attr(rec, rec->table[j], NULL, tbl);
                 }
             }
-        } else if (sAttr->isAggregation) {
-        
+            tbl->tuple_num = rec->tupleNum;
+        } else if (sAttr->isAggregation > 0) {
+            attrHdDst = sql_create_attr(sAttr->output_Name, DATA_TYPE_INT, 0);
+            attrHdSrc = sql_look_for_attrHead(rec, sAttr, &tblIdx);
+            //if (sAttr->isPrintAll) {
+                
+            //} else
+                sql_transl_to_tbl_traverse_for_aggr(rec, sAttr->table_Name, attrHdDst, sAttr->attr_Name, attrHdSrc, tbl, sAttr->isAggregation, sAttr->isPrintAll);
+            tbl->tuple_num++;
         } else {
 
-        int tblIdx = -1;
-        attrHdSrc = sql_look_for_attrHead(rec, sAttr, &tblIdx);
-        attrHdDst = CALLOC_MEM(attr_node_header_t, 1);
-        CALLOC_CHK(attrHdDst);
-        sql_attr_node_header_cpy(attrHdDst, attrHdSrc);
-        attrHdDst->name = strdup(sAttr->output_Name);
-        tbl->attr[i] = attrHdDst;
-        sql_transl_to_tbl_traverse(rec, sAttr->table_Name, attrHdDst, attrHdSrc->name, tbl);
-        tbl->attr_num++;
+            attrHdSrc = sql_look_for_attrHead(rec, sAttr, &tblIdx);
+            attrHdDst = CALLOC_MEM(attr_node_header_t, 1);
+            CALLOC_CHK(attrHdDst);
+            sql_attr_node_header_cpy(attrHdDst, attrHdSrc);
+            attrHdDst->name = strdup(sAttr->output_Name);
+            tbl->attr[i] = attrHdDst;
+            sql_transl_to_tbl_traverse(rec, sAttr->table_Name, attrHdDst, attrHdSrc->name, tbl);
+            tbl->attr_num++;
+            tbl->tuple_num = rec->tupleNum;
         }
-        /*
-        tuple_cnn_t *tupleRec = rec->head;
-        tuple_cnn_t *tupleDeep = rec->head;
-        while (tupleDeep) {
-            if (strcasecmp(tupleDeep->table->name, sAttr->table_Name) == 0){
-                break;
-            }
-            tupleDeep = tupleDeep->nextRel;
-        }
-        isRep = (tupleDeep->nextQualNum > 0);
-        repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;// should be previos level node
-        if (isRep) {
-            tupleTgt = tupleDeep->tuple;   
-            attrVal = (tupleTgt->find_attr_vals(tupleTgt, sAttr->attr_Name))->value;
-        }
-        while (tupleAdd) {
-        
-            if (repNum == 0) {
-                tupleRec = tupleRec->next;
-                tupleDeep = tupleRec;
-                while (tupleDeep) {
-                    if (strcasecmp(tupleDeep->table->name, sAttr->table_Name) == 0){
-                        break;
-                    }
-                    tupleDeep = tupleDeep->nextRel;
-                }
-                repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;
-                if (isRep) {
-                    tupleTgt = tupleDeep->tuple;   
-                    attrVal = (tupleTgt->find_attr_vals(tupleTgt, sAttr->attr_Name))->value;
-                }
-            }
-            if (!isRep) {
-                tupleTgt = tupleDeep->tuple;
-                attrVal = (tupleTgt->find_attr_vals(tupleTgt, sAttr->attr_Name))->value;
-                tupleDeep = tupleDeep->siblNext;
-            }
-            attrNd = CALLOC_MEM(attr_node_t, 1);
-            CALLOC_CHK(attrNd);
-            attrNd->header = attrHdDst;
-            attrNd->value = attrVal;
-            tupleAdd->add_attr_vals(tupleAdd, attrNd);
-            tupleAdd = tupleAdd->next;
-            repNum--;
-        }*/
         sAttr = sAttr->next;
         i++;
     }
     tbl->tuple_num = rec->tupleNum;
 }
 
-sel_attr_t *sql_make_sel_attr_node(char *newName, char *tblName, char *attrName, bool isAll, bool isAggr)
+sel_attr_t *sql_make_sel_attr_node(char *newName, char *tblName, char *attrName, bool isAll, aggregation_type_e isAggr)
 {
     sel_attr_t *sAttr = CALLOC_MEM(sel_attr_t, 1);
     CALLOC_CHK(sAttr);
@@ -2178,7 +2225,7 @@ sel_attr_t *sql_make_sel_attr_node(char *newName, char *tblName, char *attrName,
 void sql_sel_temp_select_list_collect(sel_rec_t *rec)
 { 
     char *selecTest[][3] = {
-        {NULL, "Book", NULL},//title
+        {"SUM(pages)", "Book", "pages"},//title
     };
     int num = sizeof(selecTest) / sizeof(selecTest[0]);
     int i;
@@ -2187,7 +2234,7 @@ void sql_sel_temp_select_list_collect(sel_rec_t *rec)
     for (i = 0; i < num; i++) {
         *p_sAttr = sql_make_sel_attr_node(selecTest[i][0],
                                           selecTest[i][1],
-                                          selecTest[i][2], true, false);
+                                          selecTest[i][2], false, 2);
         p_sAttr = &((*p_sAttr)->next);
     }
     rec->attrList = sAttr;

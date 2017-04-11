@@ -195,8 +195,8 @@ typedef struct __LOGIC_S__{
 } logic_node_t;//0401//0405//
 
 typedef enum {
-    AGGR_TYPE_COUNT,
-    AGGR_TYPE_SUM
+    AGGR_TYPE_COUNT = 1,
+    AGGR_TYPE_SUM =2
 }aggregation_type_e;//0409
 
 typedef struct __AGGREGATION_S__{
@@ -298,7 +298,8 @@ typedef struct __SEL_TARGET_ATTR__{
      char *table_Name; // which table is the attr in.
      char *attr_Name;
      bool isPrintAll;// for * case
-     bool isAggregation;// for * case
+
+     aggregation_type_e isAggregation;
      struct __SEL_TARGET_ATTR__ *next;
 } sel_attr_t;//0410
 
