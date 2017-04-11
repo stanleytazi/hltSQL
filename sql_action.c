@@ -839,7 +839,7 @@ void sql_stmt_handle(stmt_node_t *stmt)
             //printf("invalid stmt\n");
             break;
         }
-        if(!hdlPass) stmt_dstry[stmt->type](stmt);
+        //if(!hdlPass) stmt_dstry[stmt->type](stmt);
         free(stmt);
     }
 }
@@ -2773,6 +2773,7 @@ bool sql_select_tablename_errchk(sel_rec_t *rec, select_table_node_t *table_list
 
 
 bool sql_select_qulifier_errchk(sel_rec_t *rec, expr_node_t *select_qualifier){
+    if(select_qualifier == NULL) return false;
     bool err_exist = false;
     table_node_t *table1 = NULL;
     table_node_t *table2 = NULL;
@@ -2838,7 +2839,8 @@ bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t * expr_node){
         else{
             if(comparison_node->left->type==DATA_TYPE_NAME){
                 attr_node1 = table1->find_attr(table1, comparison_node->left->varchar_value);
-                attr_node2 = table2->find_attr(table2, comparison_node->left->varchar_value);
+                if(table2 != NULL)
+                    attr_node2 = table2->find_attr(table2, comparison_node->left->varchar_value);
                 if(attr_node1){
                     l_datatype = attr_node1->data_type;
                     printf("attr_node datatype: %d\n", attr_node1->data_type);
@@ -2940,19 +2942,19 @@ bool sql_select_var_node_errchk(sel_rec_t *rec, var_node_t *var_node)
     {
         case DATA_TYPE_NAME:
             if( sql_select_data_type_name_errchk(rec, var_node) ){
-                printf("\nattrs exist\n");
+                printf("\nVar node: DATA_TYPE_NAME error\n");
                 return true;
             }
             break;
         case DATA_TYPE_PREFIX:
             if (sql_select_data_type_prefix_errchk(rec, var_node)){
-                printf("\nattrs exist\n");
+                printf("\nVar node: DATA_TYPE_NAME error\n");
                 return true;
             }
             break;
         case DATA_TYPE_PREFIX_STAR:
             if (sql_select_data_type_prefix_star_errchk(rec, var_node)){
-                printf("\nattrs exist\n");
+                printf("\nVar node: DATA_TYPE_NAME error\n");
                 return true;
             }
             break;
@@ -3007,8 +3009,10 @@ bool sql_select_data_type_name_errchk(sel_rec_t *rec, var_node_t *var_node)
     int tableNumbersWithAttr = 0;
     for(i = 0; i < MAX_SELECT_JOIN_TABLE; i++){
         if (rec->table[i] != NULL){
-            if( rec->table[i]->find_attr(rec->table[i], var_node->varchar_value) )
+            if( rec->table[i]->find_attr(rec->table[i], var_node->varchar_value) ){
                 tableNumbersWithAttr++;
+            }
+                
         }
         else break;
     }
@@ -3021,6 +3025,6 @@ bool sql_select_data_type_name_errchk(sel_rec_t *rec, var_node_t *var_node)
         return true;
     }
     else {
-        return true;
+        return false;
     }
 }
