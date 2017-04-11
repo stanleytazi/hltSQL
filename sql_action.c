@@ -2036,7 +2036,7 @@ bool sql_sel_qualifier_join(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_cnn_t *tp
     //if (attrPrev) {
         cmp_eval_t *cmpEvalTbl = sql_get_cmp_from_table(rec, idx);
         result = (cmpEvalTbl == NULL);
-        table_node_t *table = rec->table[1];
+        table_node_t *table = rec->table[rec->tableRec];// hardcode
         tuple_t *tuple = table->tuple_list_head;
         bool evalTwo = ((cmpEval!=NULL)&&(cmpEvalTbl!=NULL));
         attr_node_t *attrThis = NULL;
