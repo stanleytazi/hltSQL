@@ -2376,7 +2376,7 @@ void sql_sel_print_all_attr(sel_rec_t *rec, table_node_t *tblIn, char *alias, ta
 
 void sql_transl_to_tbl(sel_rec_t *rec, table_node_t *tbl)
 {
-    sel_attr_t *sAttr = rec->attrList;
+    sel_attr_t *sAttr = rec->attr_list;
     int i = 0;
     int tblIdx = -1;
     tbl->name = strdup("tmp");
@@ -2453,7 +2453,7 @@ void sql_sel_temp_select_list_collect(sel_rec_t *rec)
                                           selecTest[i][2], false, 2);
         p_sAttr = &((*p_sAttr)->next);
     }
-    rec->attrList = sAttr;
+    rec->attr_list = sAttr;
 }
 
 bool sql_select_stmt_handle(select_stmt_t *selStmt)
@@ -2470,13 +2470,13 @@ bool sql_select_stmt_handle(select_stmt_t *selStmt)
     memset(&tbl, 0, sizeof(table_node_t));
     // collect table in rec
     sql_sel_collect_table(&rec, selStmt->select_table_list);
-    sql_sel_temp_select_list_collect(&rec);
+    sql_sel_collect_attr(&rec, selStmt->select_col_list);
+    //sql_sel_temp_select_list_collect(&rec);
     rec.lgcOp = LGC_TYPE_INVALID;
     sql_sel_collect_qual(&rec, selStmt->select_qualifier, LGC_TYPE_INVALID);
     sql_sel_stmt_qual_tuple(&rec);
     tuple_t *tupleHead = sql_sel_create_qual_tuple_for_output(rec.tupleNum);
     
-    //tbl.add_tuple(&tbl, tupleHead);
     tbl.tuple_list_head = tupleHead;
     sql_transl_to_tbl(&rec, &tbl);
     sql_print_table(&tbl);
