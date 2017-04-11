@@ -293,13 +293,15 @@ typedef struct __SELECT_RECORD__ {
     err_msg_e errMsg;
 } sel_rec_t;
 
-struct __SEL_TARGET_ATTR__ {
-    char *newName;
-    char *tableName;
-    char *attrName ;
-    int isPrintAll;
-    struct __SEL_TARGET_ATTR__ *next;
-};
+typedef struct __SEL_TARGET_ATTR__{
+     char *output_Name; /// Use for output. ex: "COUNT(*)" or "Student.ID" or "s.ID"......
+     char *table_Name; // which table is the attr in.
+     char *attr_Name;
+     bool isPrintAll;// for * case
+     bool isAggregation;// for * case
+     struct __SEL_TARGET_ATTR__ *next;
+} sel_attr_t;//0410
+
 
 
 #define ATTR_PRIKEY (1<<COL_ATTR_PRIKEY)
