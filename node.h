@@ -353,12 +353,19 @@ select_stmt_t *sql_test_select(void);
 
 /******/
 //0410 errchk
-bool sql_select_errchk_try(stmt_node_t *stmt_nd);
+bool sql_select_errchk_try(stmt_node_t *stmt_nd, sel_rec_t *rec);
 bool sql_select_errchk(stmt_node_t *stmt_nd);
-bool sql_select_tablename_errchk(stmt_node_t *stmt_nd, sel_rec_t *rec);
-bool sql_select_attrname_errchk(stmt_node_t *stmt_nd, sel_rec_t *rec);
+bool sql_select_tablename_errchk(select_table_node_t *table_list, sel_rec_t *rec);
+
+
+
 bool sql_select_qulifier_errchk(stmt_node_t *stmt_nd);
-//sql_select_attrname_errchk()
+bool sql_select_cmp_errchk(expr_node_t *expr_node, stmt_node_t *stmt_nd,  bool is_prefix);
+
+bool sql_select_prefix_errchk(sel_rec_t *rec, var_node_t *var_node);
+bool sql_select_name_errchk(var_node_t *var_node, table_node_t* table1, table_node_t* table2);// datatype check
+bool sql_select_attrname_errchk(stmt_node_t *stmt_nd, sel_rec_t *rec);
+
 
 //0410 errchk
 
