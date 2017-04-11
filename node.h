@@ -17,6 +17,7 @@ typedef enum {
     DATA_TYPE_NAME = 0,
     DATA_TYPE_INT = 50000,
     DATA_TYPE_PREFIX = 70000,
+    DATA_TYPE_PREFIX_STAR = 90000,
     DATA_TYPE_VARCHAR = 130000,
     DATA_TYPE_UNDEFINE = 99999,
     
@@ -359,4 +360,18 @@ select_stmt_t *sql_test_select(void);
 /******/
 //0409
 
+/******/
+//0410 errchk
+bool sql_select_errchk(sel_rec_t *rec, select_stmt_t *selStmt);
+bool sql_select_tablename_errchk(sel_rec_t *rec, select_table_node_t *table_list);
+bool sql_select_attrname_errchk(sel_rec_t *rec, select_col_node_t *attr_chk);
+
+bool sql_select_qulifier_errchk(sel_rec_t *rec, expr_node_t* select_qualifier);
+bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t* expr_node);
+
+bool sql_select_var_node_errchk(sel_rec_t *rec, var_node_t *var_node);
+bool sql_select_data_type_prefix_errchk(sel_rec_t *rec, var_node_t *var_node);
+bool sql_select_data_type_name_errchk(sel_rec_t *rec, var_node_t *var_node);// datatype check
+bool sql_select_data_type_prefix_star_errchk(sel_rec_t *rec, var_node_t *var_node);
+//0410 errchk
 #endif
