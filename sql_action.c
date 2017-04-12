@@ -5,6 +5,7 @@
 #include <assert.h>
 #include "node.h"
 
+#define SELECT_LOG "select_log.txt"
 #define MAX_TABLE_ENTRY 128
 #define MAX_STMT_NUM_SUPPORT 20
 #define MAX_IMPORT_FILE_NAME_LENGTH 100
@@ -35,7 +36,7 @@ static inline char *sql_data_type_translate(data_type_e type)
             type_s = "string(varchar)";
             break;
         default:
-            printf("error: unknown data type\n");
+            //printf("error: unknown data type\n");
             break;
     }
     return type_s;
@@ -1678,7 +1679,7 @@ bool sql_sel_collect_attr(sel_rec_t *rec, select_col_node_t* colList)
         
         clp = clp->next;
     }/*End of while loop*/
-    printAttrList(rec);
+    //printAttrList(rec);
     return true;
 }
 
@@ -2168,7 +2169,7 @@ void sql_sel_stmt_qual_tuple(sel_rec_t *rec)
 tuple_t *sql_sel_create_qual_tuple_for_output(int tplNum)
 {
     int i;
-    tuple_t *tupleHead;
+    tuple_t *tupleHead = NULL;
     tuple_t **p_tuple = &tupleHead; 
     for (i = 0; i < tplNum; i++) {
         *p_tuple = sql_tuple_create_and_init();
@@ -2208,14 +2209,16 @@ void sql_transl_to_tbl_traverse_for_aggr(sel_rec_t *rec, char *tblInName, attr_n
         tuple_t *tupleTgt = NULL;
         attr_node_value_t *attrVal = NULL;
         attr_node_value_t *attrValAggr = NULL;
-        int aggrValue = 0;
+        int aggrValue ;
         int tblIdx = -1;
         int repNum = 0;
         bool isRep = false;
+        bool isPass = false;
         data_type_e dataType;
 
         if (isPrintAll) {
             aggrValue = rec->tupleNum;
+            isPass = true;
             goto GEN_TUPLE;
         }
         if (attrHdSrc)
@@ -2228,11 +2231,13 @@ void sql_transl_to_tbl_traverse_for_aggr(sel_rec_t *rec, char *tblInName, attr_n
             }
             tupleDeep = tupleDeep->nextRel;
         }
-        isRep = (tupleDeep->nextQualNum > 0);
-        repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;// should be previos level node
-        if (isRep) {
-            tupleTgt = tupleDeep->tuple;   
-            attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+        if (tupleDeep) {
+            isRep = (tupleDeep->nextQualNum > 0);
+            repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;// should be previos level node
+            if (isRep) {
+                tupleTgt = tupleDeep->tuple;   
+                attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+            }
         }
         while (tupleNum > 0) {
             tupleNum--;
@@ -2257,11 +2262,15 @@ void sql_transl_to_tbl_traverse_for_aggr(sel_rec_t *rec, char *tblInName, attr_n
                 tupleDeep = tupleDeep->siblNext;
             }
             if (aggreType == AGGR_TYPE_COUNT) {
-                if (attrVal)//NULL value  can't be count
+                if (attrVal) {//NULL value  can't be count
                     aggrValue++;
+                    isPass = true;
+                }
             } else if (aggreType == AGGR_TYPE_SUM) {
-                if (dataType == DATA_TYPE_INT)
+                if (dataType == DATA_TYPE_INT) {
                     aggrValue+=attrVal->int_value;
+                    isPass  = true;
+                }
                 else
                     printf("not support aggr sum for this type\n");
             }
@@ -2271,16 +2280,18 @@ void sql_transl_to_tbl_traverse_for_aggr(sel_rec_t *rec, char *tblInName, attr_n
         }
 
 GEN_TUPLE:
-        attrNd = CALLOC_MEM(attr_node_t, 1);
-        CALLOC_CHK(attrNd);
-        attrValAggr = CALLOC_MEM(attr_node_value_t, 1);
-        CALLOC_CHK(attrValAggr);
-        attrValAggr->int_value = aggrValue;
-        attrNd->header = attrHd;
-        attrNd->value = attrValAggr;
-        tblOut->attr[tblOut->attr_num] = attrHd;
-        tblOut->attr_num++;
-        tupleAdd->add_attr_vals(tupleAdd, attrNd);
+        if (isPass) {
+            attrNd = CALLOC_MEM(attr_node_t, 1);
+            CALLOC_CHK(attrNd);
+            attrValAggr = CALLOC_MEM(attr_node_value_t, 1);
+            CALLOC_CHK(attrValAggr);
+            attrValAggr->int_value = aggrValue;
+            attrNd->header = attrHd;
+            attrNd->value = attrValAggr;
+            tblOut->attr[tblOut->attr_num] = attrHd;
+            tblOut->attr_num++;
+            tupleAdd->add_attr_vals(tupleAdd, attrNd);
+        }
 }
 void sql_transl_to_tbl_traverse(sel_rec_t *rec, char *tblInName, attr_node_header_t *attrHd, char* attrName, table_node_t *tblOut)
 {
@@ -2301,11 +2312,13 @@ void sql_transl_to_tbl_traverse(sel_rec_t *rec, char *tblInName, attr_node_heade
             tupleDeep = tupleDeep->nextRel;
             if (!tupleDeep->nextRel) break;
         }
-        isRep = (tupleDeep->nextQualNum > 0);
-        repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;// should be previos level node
-        if (isRep) {
-            tupleTgt = tupleDeep->tuple;   
-            attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+        if (tupleDeep) {
+            isRep = (tupleDeep->nextQualNum > 0);
+            repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;// should be previos level node
+            if (isRep) {
+                tupleTgt = tupleDeep->tuple;   
+                attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+            }
         }
         while (tupleAdd) {
     
@@ -2401,7 +2414,7 @@ void sql_transl_to_tbl(sel_rec_t *rec, table_node_t *tbl)
             CALLOC_CHK(attrHdDst);
             sql_attr_node_header_cpy(attrHdDst, attrHdSrc);
             attrHdDst->name = strdup(sAttr->output_Name);
-            tbl->attr[i] = attrHdDst;
+            tbl->attr[tbl->attr_num] = attrHdDst;
             sql_transl_to_tbl_traverse(rec, sAttr->table_Name, attrHdDst, attrHdSrc->name, tbl);
             tbl->attr_num++;
             tbl->tuple_num = rec->tupleNum;
@@ -2502,6 +2515,9 @@ bool sql_select_stmt_handle(select_stmt_t *selStmt)
         /*check whether it is aggregation function for every col_node. */
     table_node_t tbl;
     sel_rec_t rec;
+    FILE *slog = fopen(SELECT_LOG, "w");
+    fprintf(slog, "***start log ***\n");
+    fclose(slog);
     memset(&rec, 0, sizeof(sel_rec_t));
     memset(&tbl, 0, sizeof(table_node_t));
     rec.lgcOp = LGC_TYPE_INVALID;
@@ -2529,14 +2545,15 @@ bool sql_select_stmt_handle(select_stmt_t *selStmt)
 
 
 
-stmt_node_t *sql_import_file(char *name)
+stmt_node_t *sql_import_file(char *name, char *lastName)
 {
     FILE *import;
     extern FILE *yyin;
     char fileName[MAX_IMPORT_FILE_NAME_LENGTH];
     if (strlen(name) < (MAX_IMPORT_FILE_NAME_LENGTH-4))
         strcpy(fileName, name);
-    strcat(fileName,".sql");
+    sprintf(fileName, "%s.%s",fileName, lastName);
+    //strcat(fileName,lastName);
     printf("import file %s\n", fileName);
     import = fopen(fileName, "r");
     if (import) {
@@ -2750,18 +2767,20 @@ bool sql_select_errchk(sel_rec_t *rec, select_stmt_t *selStmt)
 {
     bool error = false;
     
+    FILE *slog = fopen(SELECT_LOG, "w");
+
     error = sql_select_tablename_errchk(rec, selStmt->select_table_list);
     if(error) return true;
-    else printf("Valid table name\n");
+    else fprintf(slog, "Valid table name\n");
     
     error = sql_select_attrname_errchk(rec, selStmt->select_col_list);
     if(error) return true;
-    else printf("Valid attr list\n");
+    else fprintf(slog, "Valid attr list\n");
     
     error = sql_select_qulifier_errchk(rec, selStmt->select_qualifier);
     if(error) return true;
-    else printf("Valid qulifier\n");
-    
+    else fprintf(slog,"Valid qulifier\n");
+    fclose(slog);
     return error;
 }//0410
 
@@ -2771,15 +2790,17 @@ bool sql_select_tablename_errchk(sel_rec_t *rec, select_table_node_t *table_list
     bool err_exist = false;
     table_node_t *table1 = NULL;
     table_node_t *table2 = NULL;
+    FILE *slog = fopen(SELECT_LOG, "w");
     if(table_list->next == NULL){
         table1 = sql_find_table(table_list->table_info->varchar_value);
         if(table1==NULL){
             printf("\ntable doesn't exist\n");
             err_exist = true;
+            fclose(slog);
             return err_exist;
         }
         else{
-            printf("\nonly one table\ntable name: %s\n", table1->name);
+            fprintf(slog, "\nonly one table\ntable name: %s\n", table1->name);
         }
     }
     else if(table_list->next != NULL){
@@ -2788,16 +2809,18 @@ bool sql_select_tablename_errchk(sel_rec_t *rec, select_table_node_t *table_list
         if(table1==NULL || table2==NULL){
             printf("\ntable doesn't exist\n");
             err_exist = true;
+            fclose(slog);
             return err_exist;
         }
         else{
-            printf("\nthere are two tables\n");
-            printf("table1 name: %s\n", table1->name);
-            printf("table2 name: %s\n", table2->name);
+            fprintf(slog,"\nthere are two tables\n");
+            fprintf(slog,"table1 name: %s\n", table1->name);
+            fprintf(slog,"table2 name: %s\n", table2->name);
         }
     }
     //not yet check if there are two same alias name
     //if err exist, return true
+    fclose(slog);
     return err_exist;
 }//0410
 
@@ -2809,6 +2832,7 @@ bool sql_select_qulifier_errchk(sel_rec_t *rec, expr_node_t *select_qualifier){
     bool err_exist = false;
     table_node_t *table1 = NULL;
     table_node_t *table2 = NULL;
+    FILE *slog = fopen(SELECT_LOG, "w");
     //select_stmt_t *select_stmt = NULL;
     //select_stmt = stmt_nd->stmt_info;
     table1 = rec->table[0];
@@ -2817,29 +2841,33 @@ bool sql_select_qulifier_errchk(sel_rec_t *rec, expr_node_t *select_qualifier){
     if(select_qualifier->type==EXPR_TYPE_COMPARISON){
         if(sql_select_cmp_errchk(rec, expr_node)){
             err_exist = true;
+            fclose(slog);
             return err_exist;
         }
     }
     else if(select_qualifier->type==EXPR_TYPE_LOGIC){
-        printf("\nin logic!\n");
+        fprintf(slog,"\nin logic!\n");
         logic_node_t *select_lgc = expr_node->expr_info;
         expr_node_t *expr_left = select_lgc->left;
         expr_node_t *expr_right = select_lgc->right;
         if(sql_select_cmp_errchk(rec, expr_left)==true){
             printf("\nleft cmp wrong\n");
             err_exist = true;
+            fclose(slog);
             return err_exist;
         }
         if(sql_select_cmp_errchk(rec, expr_right)==true){
             printf("\nright cmp wrong\n");
             err_exist = true;
+            fclose(slog);
             return err_exist;
         }
         // two cmp
     }
     if(err_exist==false){
-        printf("qualifier is right!\n");
+        fprintf(slog,"qualifier is right!\n");
     }
+    fclose(slog);
     return err_exist;
 }
 
@@ -2851,13 +2879,14 @@ bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t * expr_node){
     table_node_t *table2 = NULL;
     //select_stmt_t *select_stmt = NULL;
     //select_stmt = stmt_nd->stmt_info;
+    FILE *slog = fopen(SELECT_LOG, "w");
     table1 = rec->table[0];
     table2 = rec->table[1];
     comparison_node_t *comparison_node = expr_node->expr_info;//
     int l_datatype = comparison_node->left->type;
     int r_datatype = comparison_node->right->type;
-    printf("left type: %d\n", comparison_node->left->type);
-    printf("right type: %d\n", comparison_node->right->type);
+    fprintf(slog, "left type: %s\n", sql_data_type_translate(comparison_node->left->type));
+    fprintf(slog,"right type: %s\n", sql_data_type_translate(comparison_node->right->type));
     
     
     if(comparison_node->left->type==DATA_TYPE_NAME || comparison_node->left->type==DATA_TYPE_PREFIX){
@@ -2866,6 +2895,7 @@ bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t * expr_node){
         if(sql_select_var_node_errchk(rec, comparison_node->left)){
             err_exist = true;
             printf("Error! left val_node\n");
+            fclose(slog);
             return err_exist;
         }
         else{
@@ -2875,11 +2905,11 @@ bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t * expr_node){
                     attr_node2 = table2->find_attr(table2, comparison_node->left->varchar_value);
                 if(attr_node1){
                     l_datatype = attr_node1->data_type;
-                    printf("attr_node datatype: %d\n", attr_node1->data_type);
+                    fprintf(slog, "attr_node datatype: %s\n", sql_data_type_translate(attr_node1->data_type));
                 }
                 else{
                     l_datatype = attr_node2->data_type;
-                    printf("attr_node datatype: %d\n", attr_node2->data_type);
+                    fprintf(slog, "attr_node datatype: %s\n", sql_data_type_translate(attr_node2->data_type));
                 }
             }
             else if(comparison_node->left->type==DATA_TYPE_PREFIX){
@@ -2887,7 +2917,7 @@ bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t * expr_node){
                 table_node_t* table_nd = sql_find_table(table_name);
                 attr_node1 = table_nd->find_attr(table_nd, comparison_node->left->varchar_value);
                 l_datatype = attr_node1->data_type;
-                printf("attr_node l_datatype: %d\n", attr_node1->data_type);
+                fprintf(slog, "attr_node l_datatype: %s\n", sql_data_type_translate(attr_node1->data_type));
             }
         }
     }// deal left, get l_datatype
@@ -2898,6 +2928,7 @@ bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t * expr_node){
         if(sql_select_var_node_errchk(rec, comparison_node->right)){
             err_exist = true;
             printf("Error! right val_node\n");
+            fclose(slog);
             return err_exist;
         }
         else{
@@ -2906,11 +2937,13 @@ bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t * expr_node){
                 attr_node2 = table2->find_attr(table2, comparison_node->right->varchar_value);
                 if(attr_node1){
                     r_datatype = attr_node1->data_type;
-                    printf("attr_node datatype: %d\n", attr_node1->data_type);
+                    //printf("attr_node datatype: %d\n", attr_node1->data_type);
+                fprintf(slog, "attr_node datatype: %s\n", sql_data_type_translate(attr_node1->data_type));
                 }
                 else{
                     r_datatype = attr_node2->data_type;
-                    printf("attr_node datatype: %d\n", attr_node2->data_type);
+                    //printf("attr_node datatype: %d\n", attr_node2->data_type);
+                fprintf(slog, "attr_node datatype: %s\n", sql_data_type_translate(attr_node2->data_type));
                 }
             }
             else if(comparison_node->right->type==DATA_TYPE_PREFIX){
@@ -2918,22 +2951,23 @@ bool sql_select_cmp_errchk(sel_rec_t *rec, expr_node_t * expr_node){
                 table_node_t* table_nd = sql_find_table(table_name);
                 attr_node1 = table_nd->find_attr(table_nd, comparison_node->right->varchar_value);
                 r_datatype = attr_node1->data_type;
-                printf("attr_node r_datatype: %d\n", attr_node1->data_type);
+                fprintf(slog,"attr_node r_datatype: %s\n", sql_data_type_translate(attr_node1->data_type));
             }
         }
     }// deal right, get r_datatype
     if(l_datatype!=r_datatype){
         err_exist = true;
-        printf("\nError! l_datatype != r_datatype\n\n");
+        fprintf(slog, "\nError! l_datatype != r_datatype\n\n");
         return err_exist;
     }
     else{
-        printf("l_datatype = %d\n", l_datatype);
-        printf("r_datatype = %d\n", r_datatype);
+        fprintf(slog, "l_datatype = %s\n", sql_data_type_translate(l_datatype));
+        fprintf(slog, "r_datatype = %s\n", sql_data_type_translate(r_datatype));
     }
     if(err_exist==false){
-        printf("compare is right!\n");
+        fprintf(slog, "compare is right!\n");
     }
+    fclose(slog);
     return err_exist;
 }
 

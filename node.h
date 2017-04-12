@@ -3,7 +3,7 @@
 #define __NODE_H__
 #include <stdbool.h>
 #include <stdint.h>
-
+#include <stdio.h>
 #define MAX_ATTR_NUM 20
 #define MAX_VARCHAR_LEN 9999
 #define MAX_TUPLE_ATTR_HASH_SIZE 32
@@ -295,6 +295,7 @@ typedef struct __SELECT_RECORD__ {
     sel_attr_t* attr_list;
     map_table_name_t *mapTbl;
     int tupleNum;
+    FILE *log;
     lgc_type_e lgcOp;
     err_msg_e errMsg;
 } sel_rec_t;
@@ -345,7 +346,7 @@ stmt_node_t *sql_select_stmt_create(stmt_type_e stmt_type, select_col_node_t* se
 bool sql_select_stmt_handle(select_stmt_t *select_stmt);
 
 stmt_node_t *sql_cret_table_stmt_create(char *table_name, attr_node_header_t *attr_list);
-stmt_node_t *sql_import_file(char *name);
+stmt_node_t *sql_import_file(char *name, char *lastName);
 
 expr_node_t *sql_expr_aggregation_node_create(aggregation_type_e type, bool is_star, expr_node_t *expr_node);
 

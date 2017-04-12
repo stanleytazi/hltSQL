@@ -238,7 +238,6 @@ int yylex();
 %token SONAME
 %token SPATIAL
 %token SPECIFIC
-%token SQL
 %token SQLEXCEPTION
 %token SQLSTATE
 %token SQLWARNING
@@ -336,7 +335,7 @@ show_log_stmt: SHOW NAME { $$ = sql_show_table_content($2); free($2);}
              ;
 stmt: import_file_stmt {$$=$1;};
 
-import_file_stmt: IMPORT NAME'.'SQL { $$= sql_import_file($2); show_log("import\n");free($2);}
+import_file_stmt: IMPORT NAME'.'NAME { $$= sql_import_file($2,$4); show_log("import\n");free($2);}
                 ;
    /* statements: insert statement */
 

@@ -197,7 +197,6 @@ SOME	{ return SOME; }
 SONAME	{ return SONAME; }
 SPATIAL	{ return SPATIAL; }
 SPECIFIC	{ return SPECIFIC; }
-SQL	{ return SQL; }
 SQLEXCEPTION	{ return SQLEXCEPTION; }
 SQLSTATE	{ return SQLSTATE; }
 SQLWARNING	{ return SQLWARNING; }
