@@ -12,6 +12,7 @@
 #define CALLOC_MEM(type, n) (type *)calloc((n),sizeof(type))
 #define CALLOC_CHK(node) assert(node && "out of heap\n")            
 
+typedef bool (*sql_cmp_two_tuple)(tuple_t *new, tuple_t *exist, attr_node_header_t *attr);
 typedef void (*stmt_dstry_func)(stmt_node_t*);
 static table_node_t *table_list[MAX_TABLE_ENTRY] = { NULL };
 stmt_dstry_func *stmt_dstry;
@@ -283,14 +284,33 @@ bool sql_compare_prikey_with_pkname(tuple_t *new_insr, tuple_t *old_insr, attr_n
     }
     return false;
 }
+
+bool sql_compare_each_prikey(tuple_t *new, tuple_t *exist, attr_node_header_t *pk_attr)
+{
+    int i;
+    for (i = 0; i < MAX_ATTR_NUM; i++) {
+        if (!sql_compare_prikey_with_pkname(new, exist, pk_attr+i))
+            return false;
+    }
+    return true;
+}
 // true: means duplicated tuple was created before
 // we should free all the mem created for new insertion 
 // free
 bool sql_is_dup_tuple_chk(table_node_t *table, tuple_t *new_tuple)
 {
     tuple_t *tuple_in_tbl = table->tuple_list_head;
+    sql_cmp_two_tuple cmp_fun;
+    attr_node_header_t *cmp_arg;
+    if (table->pkey_attr_head) {
+        cmp_fun = sql_compare_prikey_with_pkname;
+        cmp_arg = table->pkey_attr_head;
+    } else {
+        cmp_fun = sql_compare_each_prikey;
+        cmp_arg = &(table->attr[0]);
+    }
     while (tuple_in_tbl) {
-        if (sql_compare_prikey_with_pkname(new_tuple, tuple_in_tbl, table->pkey_attr_head))
+        if (cmp_fun(new_tuple, tuple_in_tbl, cmp_arg))
             return true;
         tuple_in_tbl = tuple_in_tbl->next;
     }
@@ -1096,6 +1116,7 @@ void sql_print_table(table_node_t *table)
                 tupleNum--;
                 printf("\n");
             }
+            printf("total:%d\n", table->tuple_num);
         }
     } else {
         printf("error: can not find the tablew\n");
@@ -1950,7 +1971,7 @@ bool sql_sel_qualifier(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_t *tuple)
                     switch (cmpEval->next->type)
                     {
                         case LGC_TYPE_AND:
-                            printf("LGC_TYPE_AND\n");
+                            //printf("LGC_TYPE_AND\n");
                             
                             break;
                         case LGC_TYPE_OR:
@@ -2032,14 +2053,14 @@ bool sql_sel_qualifier_join(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_cnn_t *tp
         cmp = cmpEval->cmp;
         cmpL = cmp->left;
         cmpR = cmp->right;
-        attrPrev= tuplePrev->find_attr_vals(tuplePrev, cmpL->varchar_value);
-        if (!attrPrev) {
-            attrPrev = tuplePrev->find_attr_vals(tuplePrev, cmpR->varchar_value);
-            idx = cmpEval->cmpL_tblIdx;
-            cmpThis = cmpL;
-        } else {
+        if (strcmp(tplCnn->table->name, cmpL->prefix_value) == 0 ) {
+            attrPrev= tuplePrev->find_attr_vals(tuplePrev, cmpL->varchar_value);
             idx = cmpEval->cmpR_tblIdx;
             cmpThis = cmpR;
+        } else {
+            attrPrev= tuplePrev->find_attr_vals(tuplePrev, cmpR->varchar_value);
+            idx = cmpEval->cmpL_tblIdx;
+            cmpThis = cmpL;
         }
     }
     
@@ -2209,7 +2230,7 @@ void sql_transl_to_tbl_traverse_for_aggr(sel_rec_t *rec, char *tblInName, attr_n
         tuple_t *tupleTgt = NULL;
         attr_node_value_t *attrVal = NULL;
         attr_node_value_t *attrValAggr = NULL;
-        int aggrValue ;
+        int aggrValue = 0 ;
         int tblIdx = -1;
         int repNum = 0;
         bool isRep = false;
@@ -2534,14 +2555,13 @@ bool sql_select_stmt_handle(select_stmt_t *selStmt)
     sql_sel_collect_qual(&rec, selStmt->select_qualifier, LGC_TYPE_INVALID);
     sql_sel_stmt_qual_tuple(&rec);
     tuple_t *tupleHead = sql_sel_create_qual_tuple_for_output(rec.tupleNum);
-    
+    ;
     tbl.tuple_list_head = tupleHead;
     sql_transl_to_tbl(&rec, &tbl);
     sql_print_table(&tbl);
     sql_select_vrt_table_free(&rec, &tbl);
     return true;   
 }
-
 
 
 
