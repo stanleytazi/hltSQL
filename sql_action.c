@@ -307,7 +307,7 @@ bool sql_is_dup_tuple_chk(table_node_t *table, tuple_t *new_tuple)
         cmp_arg = table->pkey_attr_head;
     } else {
         cmp_fun = sql_compare_each_prikey;
-        cmp_arg = &(table->attr[0]);
+        cmp_arg = table->attr[0];
     }
     while (tuple_in_tbl) {
         if (cmp_fun(new_tuple, tuple_in_tbl, cmp_arg))
