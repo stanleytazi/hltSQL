@@ -1,11 +1,17 @@
-create table student(test int);
-select SUM(*)from student as a1;
-select SUM(test)from student as a1;
-select count(test)from student as a1;
-select student.test from student as a1;
-select a1.test from student as a1;
-select test from student as a1;
-select * from student as a1;
-select a1.* from student as a1;
-select count(student.test)from student as a1;
-select a1.aa, test from student as a1;
+create table user1
+(
+userId int primary key,
+name varchar(30),
+userLocation varchar(30)
+);
+INSERT INTO user1 VALUES (811883,'regisb','Paris France') ;
+INSERT INTO user1 VALUES (8055532,'goodevilgenius','Rockville MD USA') ;
+INSERT INTO user1 VALUES (8229592,'minoic','Spain') ;
+INSERT INTO user1 VALUES (9366872,'wezm','Melbourne Australia') ;
+INSERT INTO user1 VALUES (9647362,'mimmim','') ;
+INSERT INTO user1 VALUES (12279742,'sahaquiel','Mexico') ;
+INSERT INTO user1 VALUES (14163678,'Lise','Quebec Canada') ;
+INSERT INTO user1(userId, name) VALUES (14163678,'Lise') ;
+INSERT INTO user1(userId, name) VALUES (1,'t1') ;
+INSERT INTO user1(userId, name) VALUES (2,'t2') ;
+INSERT INTO user1(userId, name) VALUES (3,'t3') ;

@@ -3,7 +3,9 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
+#include <./json/json.h>
 #include "node.h"
+#include "disktest.h"
 
 #define SELECT_LOG "select_log.txt"
 #define MAX_TABLE_ENTRY 128
@@ -25,6 +27,8 @@ bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList);
 char *sql_sel_find_tbl_name(sel_rec_t *rec, char *pfx);
 bool sql_sel_collect_attr(sel_rec_t *rec, select_col_node_t* colList);
 void printAttrList(sel_rec_t *rec);
+void write_table(table_node_t *table);
+void read_table(char *tableName);
 static inline char *sql_data_type_translate(data_type_e type)
 {
     char *type_s = NULL;
@@ -806,6 +810,7 @@ bool sql_cret_table_stmt_handle(cret_tbl_stmt_t *cretTblStmt)
         return false;
     }
     sql_cret_tbl_add_table(tbl);
+    read_table(cretTblStmt->table_name);
     return true;
 
 }
@@ -839,12 +844,14 @@ bool sql_insert_stmt_handle(insert_stmt_t *insr_stmt)
     }
     sql_output_insert_result_to_file(insr_stmt);
     //sql_insert_stmt_free_mem(insr_stmt);
+    write_table(table);
     return rtn;
     // check if NOT-NULL attr is NULL
 }
 
 void sql_stmt_handle(stmt_node_t *stmt)
 {
+    //ptest();
     bool hdlPass = true;
     if (stmt) {
         switch(stmt->type)
@@ -3114,4 +3121,78 @@ bool sql_select_data_type_name_errchk(sel_rec_t *rec, var_node_t *var_node)
     else {
         return false;
     }
+}
+
+void write_table(table_node_t *table)
+{
+    int i;
+    FILE *fPtr;
+     
+    fPtr = fopen("diskiotest.txt", "w");
+    if (fPtr) {
+        printf("\nopen succeed...\n");
+    }
+    else {
+        printf("\nopen fail...\n");
+    }
+
+  if (table) {
+    tuple_t *tuple_nd = NULL;
+    attr_node_t *attr_nd = NULL; 
+    unsigned int bucket_idx = 0;
+    bool is_find = false;
+    int tupleNum = table->tuple_num;
+        if (tupleNum) {
+        tuple_nd = table->tuple_list_head;
+            while (tuple_nd && tupleNum > 0) {
+                for (i = 0; i < table->attr_num; i++) {
+                    bucket_idx = BKDRHash(table->attr[i]->name) % MAX_TUPLE_ATTR_HASH_SIZE;
+                    attr_nd = tuple_nd->attr[bucket_idx];
+                    while( attr_nd && attr_nd->header && attr_nd->header->name) {
+                        if (strcasecmp(attr_nd->header->name, table->attr[i]->name) == 0) {
+                            is_find = true;
+                            break;
+                        }
+                        attr_nd = attr_nd->next;
+                    }
+                    if (is_find) {
+                
+                        is_find = false;
+                        if(attr_nd->header->data_type == DATA_TYPE_VARCHAR ) // TODO: may not be right
+                            fprintf(fPtr, "%s ", attr_nd->value->varchar_value);
+                        else
+                            fprintf(fPtr, "%d ", attr_nd->value->int_value);
+                    
+                    } else {
+                        fprintf(fPtr, "NULL ");
+                    }
+                }
+                tuple_nd = tuple_nd->next;
+                tupleNum--;
+                fprintf(fPtr, "\n");
+            }
+            fprintf(fPtr, "total:%d\n", table->tuple_num);
+        }
+    } else {
+        fprintf(fPtr, "error: can not find the table\n");
+    }
+    fclose(fPtr);
+}
+
+
+void read_table(char *tableName)
+{
+    tableName = "sadasda";
+    FILE *fPtr;
+     
+    fPtr = fopen( strcat(tableName, ".txt") , "w");
+    if (fPtr) {
+        printf("\nopen succeed...\n");
+    }
+    else {
+        printf("\nopen fail...\n");
+    }
+    
+    printf("\n%s\n", tableName);
+    fopen()
 }

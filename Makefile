@@ -36,7 +36,7 @@ pmysql.c: pmysql.l
 
 pmysql.o: pmysql.c pmysql.tab.h
 
-sql_action.o: sql_action.c node.h
+sql_action.o: sql_action.c node.h disktest.c /json/json.h
 
 
 clean:

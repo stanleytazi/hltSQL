@@ -1,0 +1,10 @@
+811883 'regisb' 'Paris France' 
+8055532 'goodevilgenius' 'Rockville MD USA' 
+8229592 'minoic' 'Spain' 
+9366872 'wezm' 'Melbourne Australia' 
+9647362 'mimmim' '' 
+12279742 'sahaquiel' 'Mexico' 
+14163678 'Lise' 'Quebec Canada' 
+1 't1' NULL 
+2 't2' NULL 
+total:9
