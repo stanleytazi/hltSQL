@@ -21,12 +21,12 @@ endif
 
 EXE = hltsql
 
-OBJ := pmysql.tab.o pmysql.o sql_action.o
+OBJ := pmysql.tab.o pmysql.o sql_action.o writer.o table.o
 all: $(EXE)
 
 
 $(EXE): $(OBJ)
-	${CC} -o $@ pmysql.tab.o pmysql.o sql_action.o
+	${CC} -o $@ $(OBJ)
 
 pmysql.tab.c pmysql.tab.h: pmysql.y
 	${YACC} -vd --debug pmysql.y
@@ -38,9 +38,13 @@ pmysql.o: pmysql.c pmysql.tab.h
 
 sql_action.o: sql_action.c node.h
 
+writer.o: writer.c writer.h 
+
+table.o: table.c 
+	${CC} -c $< 
 
 clean:
-	rm -f hltsql pmysql.tab.c pmysql.tab.h pmysql.c pmysql.tab.o pmysql.o pmysql.output
+	rm -f hltsql pmysql.tab.c pmysql.tab.h pmysql.c pmysql.tab.o pmysql.o pmysql.output sql_action.o table.o writer.o
 
 .SUFFIXES:	.l .y .c
-
+	

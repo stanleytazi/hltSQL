@@ -4,7 +4,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include "node.h"
-
+#include "table.h"
 #define SELECT_LOG "select_log.txt"
 #define MAX_TABLE_ENTRY 128
 #define MAX_STMT_NUM_SUPPORT 20
@@ -806,6 +806,9 @@ bool sql_cret_table_stmt_handle(cret_tbl_stmt_t *cretTblStmt)
         return false;
     }
     sql_cret_tbl_add_table(tbl);
+    db__table_info_create(tbl);
+    db__table_info_write(tbl);
+    
     return true;
 
 }
@@ -1072,12 +1075,12 @@ void sql_print_col_node(col_node_t *list)
 }
 void sql_print_table(table_node_t *table)
 {
-  if (table) {
-    tuple_t *tuple_nd = NULL;
-    attr_node_t *attr_nd = NULL; 
-    unsigned int bucket_idx = 0;
-    bool is_find = false;
-    int tupleNum = table->tuple_num;
+    if (table) {
+        tuple_t *tuple_nd = NULL;
+        attr_node_t *attr_nd = NULL; 
+        unsigned int bucket_idx = 0;
+        bool is_find = false;
+        int tupleNum = table->tuple_num;
         printf("table name: %s\n", table->name);
         int i = 0;
         for (i = 0; i < table->attr_num; i++) {
@@ -2619,6 +2622,15 @@ void sql_init()
     stmt_dstry[STMT_TYPE_CREATE_TABLE] = sql_cret_tbl_stmt_destroy;
     stmt_dstry[STMT_TYPE_INSERT_TUPLE] = sql_insr_tpl_stmt_destroy;
 
+    // test table save
+    
+    char *tblName = strdup("student");
+    table_node_t *tbl_read = sql_cret_tbl_table_create_and_init(tblName);
+    db__table_info_create(tbl_read);
+    db__table_info_read(tbl_read);
+    sql_cret_tbl_add_table(tbl_read);
+    sql_print_table(tbl_read);
+    
 }
 
 

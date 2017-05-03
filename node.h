@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "writer.h"
 #define MAX_ATTR_NUM 20
 #define MAX_VARCHAR_LEN 9999
 #define MAX_TUPLE_ATTR_HASH_SIZE 32
@@ -53,9 +54,9 @@ typedef enum {
 
 struct __ATTR_NODE_HEADER_S__ {
     data_type_e  data_type;
-    char *name;
     int varchar_len;
     uint16_t col_attr;
+    char *name;
 
     bool (*is_type_match)(attr_node_header_t *self, data_type_e type);
     bool (*is_data_valid)(attr_node_header_t *self, var_node_t *var_node);
@@ -93,15 +94,15 @@ struct __TUPLE_NODE_S__{
     struct __TUPLE_NODE_S__ *prev;
 };
 
-
-struct __TABLE_NODE__ {
-    char *name;
+struct __TABLE_NODE__ { 
+    BP_WRITER_PRIVATE
     unsigned int attr_num;
-    attr_node_header_t *attr[MAX_ATTR_NUM]; 
     unsigned int pkey_num;
+    unsigned int tuple_num;
+    char *name;
+    attr_node_header_t *attr[MAX_ATTR_NUM]; 
     attr_node_header_t *pkey_attr_head;
     attr_node_header_t *pkey_attr_tail;
-    unsigned int tuple_num;
 
     bool (*set_attr)(table_node_t *self, attr_node_header_t *attr_node_hdr);
     attr_node_header_t *(*find_attr)(table_node_t *self, char *attrName);
