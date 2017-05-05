@@ -5,8 +5,10 @@
 #include <assert.h>
 #include "node.h"
 #include "table.h"
+
 #define SELECT_LOG "select_log.txt"
-#define MAX_TABLE_ENTRY 128
+
+
 #define MAX_STMT_NUM_SUPPORT 20
 #define MAX_IMPORT_FILE_NAME_LENGTH 100
 #define CALLOC_MEM(type, n) (type *)calloc((n),sizeof(type))
@@ -15,7 +17,10 @@
 typedef bool (*sql_cmp_two_tuple)(tuple_t *new, tuple_t *exist, attr_node_header_t *attr);
 typedef void (*stmt_dstry_func)(stmt_node_t*);
 static table_node_t *table_list[MAX_TABLE_ENTRY] = { NULL };
+static db_db_t dbms;
 stmt_dstry_func *stmt_dstry;
+
+
 bool sql_is_dup_tuple_chk(table_node_t *self, tuple_t *new_tuple);
 static tuple_t *sql_tuple_create_and_init(void);
 bool sql_insr_check_col_list_valid(table_node_t *self, col_node_t *colNodeList);
@@ -475,20 +480,22 @@ bool sql_insr_stmt_tuple_create(table_node_t *tbl, col_node_t *col_list, insert_
 {
     attr_node_t *attrNdHead = NULL;
     bool result = true;
-    if (col_list)
+    if (col_list) {
         result = sql_insr_create_attr_node_with_self_dfn_order(tbl, col_list, vals_list, &attrNdHead);
-    else
+    }
+    else {
         result = sql_insr_create_attr_node_by_default(tbl, vals_list, &attrNdHead);
-    
+    }
     if (result && attrNdHead) {
         tuple_t *tuple = sql_tuple_create_and_init();
         tuple->add_attr_vals(tuple, attrNdHead);
         if (!tbl->chk_duplc(tbl, tuple)) {
             tbl->add_tuple(tbl, tuple);
+            //D3: Save the tuple to table current page
+            // db__table_info_tuple_write(table, tuple);
             return true;
         } else {
             printf("duplicated\n");
-            // print out the error message
         }
     } else {
         // fail to create a attrVals Node
@@ -808,7 +815,7 @@ bool sql_cret_table_stmt_handle(cret_tbl_stmt_t *cretTblStmt)
     sql_cret_tbl_add_table(tbl);
     db__table_info_create(tbl);
     db__table_info_write(tbl);
-    
+    db__dbms_info_table_write(&dbms, tbl);
     return true;
 
 }
@@ -841,7 +848,7 @@ bool sql_insert_stmt_handle(insert_stmt_t *insr_stmt)
         rtn = false;   
     }
     sql_output_insert_result_to_file(insr_stmt);
-    //sql_insert_stmt_free_mem(insr_stmt);
+    
     return rtn;
     // check if NOT-NULL attr is NULL
 }
@@ -2614,6 +2621,22 @@ expr_node_t *sql_expr_aggregation_node_create(aggregation_type_e type, bool is_s
     new_expr_node->expr_info = (void *)aggregation_node;
     return new_expr_node;
 }
+static void sql_recover_table_info(db_db_t *db)
+{
+    char *tblName;
+    table_node_t *tbl;
+    int i;
+
+    for (i = 0; i < db->tbl_num; i++) {
+        tblName = strdup(db->tbl[i].name);
+        tbl = sql_cret_tbl_table_create_and_init(tblName);
+        db__table_info_create(tbl);
+        db__table_info_read(tbl);
+        sql_cret_tbl_add_table(tbl);
+        sql_print_table(tbl);
+    } 
+}
+
 void sql_init()
 {
     /* stmt destroy function register*/
@@ -2624,13 +2647,17 @@ void sql_init()
 
     // test table save
     
-    char *tblName = strdup("student");
+    db__dbms_info_create(&dbms, "DBSQL");
+    if (dbms.tbl_num)    
+        sql_recover_table_info(&dbms);
+/*
+    char *tblName = strdup("jump");
     table_node_t *tbl_read = sql_cret_tbl_table_create_and_init(tblName);
     db__table_info_create(tbl_read);
     db__table_info_read(tbl_read);
     sql_cret_tbl_add_table(tbl_read);
     sql_print_table(tbl_read);
-    
+  */  
 }
 
 

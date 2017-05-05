@@ -92,6 +92,20 @@ int bp__writer_write(bp__writer_t *w,
     return BP_OK;
 }
 
+int bp__writer_pwrite(bp__writer_t *w,
+                      const uint64_t offset,
+                      uint64_t *size,
+                      void *data)
+{
+    ssize_t written;
+    if ( *size == 0 ) 
+        return BP_OK;
+
+    written = pwrite(w->fd, data, *size, offset);
+    if ((uint64_t) written != *size) return BP_EFILEWRITE;
+    
+    return BP_OK; 
+}
 
 int bp__writer_read(bp__writer_t *w,
                     const uint64_t offset,

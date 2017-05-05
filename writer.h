@@ -38,6 +38,11 @@ int bp__writer_write(bp__writer_t *w,
                      uint64_t *offset,
                      uint64_t *size);
 
+int bp__writer_pwrite(bp__writer_t *w,
+                      const uint64_t offset,
+                      uint64_t *size,
+                      void *data);
+
 int bp__writer_find(bp__writer_t *w,
                     const enum comp_type comp,
                     const uint64_t size,

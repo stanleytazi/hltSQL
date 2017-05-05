@@ -8,6 +8,7 @@
 #define MAX_ATTR_NUM 20
 #define MAX_VARCHAR_LEN 9999
 #define MAX_TUPLE_ATTR_HASH_SIZE 32
+#define MAX_TABLE_ENTRY 128
 
 typedef struct __VAR_S__ var_node_t;
 typedef struct __ATTR_NODE_HEADER_S__ attr_node_header_t;
@@ -103,7 +104,9 @@ struct __TABLE_NODE__ {
     attr_node_header_t *attr[MAX_ATTR_NUM]; 
     attr_node_header_t *pkey_attr_head;
     attr_node_header_t *pkey_attr_tail;
-
+    int16_t curr_page;
+    db_page_t pageTable[MAX_PAGE_NUM_IN_TABLE];
+    
     bool (*set_attr)(table_node_t *self, attr_node_header_t *attr_node_hdr);
     attr_node_header_t *(*find_attr)(table_node_t *self, char *attrName);
     bool (*chk_col_list)(table_node_t *self, col_node_t *col_list);
