@@ -1558,44 +1558,6 @@ stmt_node_t *sql_select_stmt_create(stmt_type_e stmt_type, select_col_node_t* se
 }//0401//0405
 
 
-/* conflict
-bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList)
-{
-    int i = 0;
-    table_node_t *table = NULL;
-    select_table_node_t *selTable = tableList;
-    map_table_name_t *mapTbl;
-    map_table_name_t **mapTblHd = &mapTbl;
-    while (selTable) {
-        table = sql_find_table(selTable->table_info->varchar_value);
-        if (table) {
-            *mapTblHd = CALLOC_MEM(map_table_name_t, 1);
-            CALLOC_CHK(*mapTblHd);
-            (*mapTblHd)->alias = selTable->alias_name;
-            (*mapTblHd)->tableName = selTable->table_info->varchar_value;
-            rec->table[i] = table;
-            i++;
-            mapTblHd = &((*mapTblHd)->next);
-        } else {
-            //ERROR
-            return false;
-        }
-        selTable = selTable->next;
-    }
-    rec->tableNum = i;
-    rec->mapTbl = mapTbl;
-    return true;
-}
-
-char *sql_sel_find_tbl_name(sel_rec_t *rec, char *pfx)
-{
-    map_table_name_t *mapTbl = rec->mapTbl;
-    while (mapTbl) {
-        if (strcmp(mapTbl->tableName, pfx)== 0 || strcmp(mapTbl->alias, pfx) == 0)
-            return mapTbl->tableName;
-	mapTbl = mapTbl->next;
-    }
-}*/
 bool sql_sel_collect_attr(sel_rec_t *rec, select_col_node_t* colList)
 {
     sel_attr_t *alp = NULL;
@@ -1894,7 +1856,7 @@ void sql_sel_collect_qual(sel_rec_t *rec, expr_node_t *exprList, lgc_type_e lgcT
         int idx = -1;
         int idx2 = -1;
         int varType = -1;
-        //rec->lgcOp = LGC_TYPE_INVALID;
+        
         if ((cmp->left->type == DATA_TYPE_PREFIX || cmp->left->type == DATA_TYPE_NAME) 
           && (cmp->right->type == DATA_TYPE_PREFIX || cmp->right->type == DATA_TYPE_NAME)) {
             idx = sql_find_table_index_in_rec(rec, cmp->left);
@@ -2066,6 +2028,7 @@ bool sql_sel_compare_attr(cmp_type_e cmpType, attr_node_t *attrL, attr_node_t *a
     }
     return result;
 }
+
 bool sql_sel_qualifier_join(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_cnn_t *tplCnn)
 {
     var_node_t *cmpThis  = NULL;
@@ -2092,7 +2055,6 @@ bool sql_sel_qualifier_join(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_cnn_t *tp
         }
     }
     
-    //if (attrPrev) {
         cmp_eval_t *cmpEvalTbl = sql_get_cmp_from_table(rec, idx);
         result = (cmpEvalTbl == NULL);
         table_node_t *table = rec->table[rec->tableRec];// hardcode
@@ -2143,7 +2105,6 @@ bool sql_sel_qualifier_join(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_cnn_t *tp
             tuple = tuple->next;
         }
         tplCnn->nextQualNum = qualTupleNum;
-    //} 
     return (tplCnn->nextRel != NULL);
 }
 
@@ -2570,7 +2531,6 @@ bool sql_select_stmt_handle(select_stmt_t *selStmt)
     memset(&rec, 0, sizeof(sel_rec_t));
     memset(&tbl, 0, sizeof(table_node_t));
     rec.lgcOp = LGC_TYPE_INVALID;
-    // collect table in rec
     sql_sel_collect_table(&rec, selStmt->select_table_list);
     if( sql_select_errchk(&rec, selStmt) ) {
         printf("Select statement error\n");
@@ -2583,7 +2543,6 @@ bool sql_select_stmt_handle(select_stmt_t *selStmt)
     sql_sel_collect_qual(&rec, selStmt->select_qualifier, LGC_TYPE_INVALID);
     sql_sel_stmt_qual_tuple(&rec);
     tuple_t *tupleHead = sql_sel_create_qual_tuple_for_output(rec.tupleNum);
-    ;
     tbl.tuple_list_head = tupleHead;
     sql_transl_to_tbl(&rec, &tbl);
     sql_print_table(&tbl);
