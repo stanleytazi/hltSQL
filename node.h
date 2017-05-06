@@ -5,10 +5,13 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "writer.h"
+#include "page.h"
 #define MAX_ATTR_NUM 20
 #define MAX_VARCHAR_LEN 9999
 #define MAX_TUPLE_ATTR_HASH_SIZE 32
 #define MAX_TABLE_ENTRY 128
+#define CALLOC_MEM(type, n) (type *)calloc((n),sizeof(type))
+#define CALLOC_CHK(node) assert(node && "out of heap\n")            
 
 typedef struct __VAR_S__ var_node_t;
 typedef struct __ATTR_NODE_HEADER_S__ attr_node_header_t;
@@ -89,6 +92,8 @@ typedef struct __TUPLE_NODE_S__ tuple_t;
         
 struct __TUPLE_NODE_S__{
     attr_node_t *attr[MAX_TUPLE_ATTR_HASH_SIZE];
+    uint16_t pageId;
+    uint16_t offset;
     void (*add_attr_vals)(tuple_t *self, attr_node_t *attrVal);
     attr_node_t *(*find_attr_vals)(tuple_t *self, char *name);
     struct __TUPLE_NODE_S__ *next;
@@ -333,6 +338,9 @@ insert_vals_node_t *sql_insert_vals_node_create(expr_node_t *expr_node, insert_v
 expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char *varchar_val, char *prefix_val);
 void sql_output_insert_result_to_file(insert_stmt_t *stmt);
 attr_node_header_t *sql_cret_def_handle(attr_node_header_t *list, cret_def_node_t *cret_def_node);
+attr_node_t *sql_attr_node_create_and_init(attr_node_header_t *hdr);
+attr_node_header_t *sql_attr_header_node_create_and_init(char *name);
+void sql_cret_tbl_page_init(table_node_t *tbl, uint16_t pageId);
 
 cret_def_node_t *sql_cret_def_pk_def_node_create(col_node_t *col_node);
 cret_def_node_t * sql_cret_def_attr_declar_node_create(char *name, int data_type, uint16_t col_attr);

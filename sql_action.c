@@ -11,8 +11,6 @@
 
 #define MAX_STMT_NUM_SUPPORT 20
 #define MAX_IMPORT_FILE_NAME_LENGTH 100
-#define CALLOC_MEM(type, n) (type *)calloc((n),sizeof(type))
-#define CALLOC_CHK(node) assert(node && "out of heap\n")            
 
 typedef bool (*sql_cmp_two_tuple)(tuple_t *new, tuple_t *exist, attr_node_header_t *attr);
 typedef void (*stmt_dstry_func)(stmt_node_t*);
@@ -96,7 +94,7 @@ static void sql_add_tuple_to_table(table_node_t *self, tuple_t *tuple) {
         self->tuple_list_head = tuple;
         self->tuple_list_tail = tuple;
     }
-    self->tuple_num++;
+    //self->tuple_num++;
 }
 
 
@@ -398,6 +396,15 @@ static bool sql_attr_node_set_value(attr_node_t *attr, var_node_t *vals)
     return true;
 }
 
+attr_node_header_t *sql_attr_header_node_create_and_init(char *name)
+{
+    attr_node_header_t *newNd = CALLOC_MEM(attr_node_header_t, 1);
+    CALLOC_CHK(newNd);
+    newNd->name = name;
+    newNd->is_data_valid = sql_check_data_validation; 
+    newNd->is_type_match = sql_check_data_type_match;
+    return newNd;
+}
 attr_node_t *sql_attr_node_create_and_init(attr_node_header_t *hdr)
 {
     attr_node_t *attrNd = CALLOC_MEM(attr_node_t, 1);
@@ -471,7 +478,7 @@ static tuple_t *sql_tuple_create_and_init()
 {
     tuple_t *tuple = CALLOC_MEM(tuple_t, 1);
     CALLOC_CHK(tuple);
-    tuple->add_attr_vals = sql_tuple_attr_insert;
+    tuple-> add_attr_vals = sql_tuple_attr_insert;
     tuple->find_attr_vals = sql_find_attr_in_tuple;
     return tuple;
 }
@@ -491,8 +498,8 @@ bool sql_insr_stmt_tuple_create(table_node_t *tbl, col_node_t *col_list, insert_
         tuple->add_attr_vals(tuple, attrNdHead);
         if (!tbl->chk_duplc(tbl, tuple)) {
             tbl->add_tuple(tbl, tuple);
-            //D3: Save the tuple to table current page
-            // db__table_info_tuple_write(table, tuple);
+            tbl->tuple_num++;
+            db__table_info_tuple_save_in_mem(tbl, tuple);
             return true;
         } else {
             printf("duplicated\n");
@@ -816,11 +823,24 @@ bool sql_cret_table_stmt_handle(cret_tbl_stmt_t *cretTblStmt)
     db__table_info_create(tbl);
     db__table_info_write(tbl);
     db__dbms_info_table_write(&dbms, tbl);
+    
+    tbl->curr_page++;
+    sql_cret_tbl_page_init(tbl, tbl->curr_page);
+    db__table_info_update(tbl);
     return true;
 
 }
 
-
+void sql_cret_tbl_page_init(table_node_t *tbl, uint16_t pageId)
+{
+    char *page;   
+    tbl->pageTable[pageId].valid_bit = 1;
+    tbl->pageTable[pageId].dirty_bit = 1;
+    page = calloc(1, DB_PAGE_SIZE);
+    *(uint16_t *)(page + DB_PAGE_HEADER_OFFSET_TYPE) = PAGE_TYPE_TUPLE;
+    *(uint16_t *)(page + DB_PAGE_HEADER_OFFSET_OFFSET) = DB_PAGE_HEADER_SIZE;
+    tbl->pageTable[pageId].page = page;
+}
 
 
 bool sql_insert_stmt_handle(insert_stmt_t *insr_stmt)
@@ -904,11 +924,7 @@ stmt_node_t *sql_cret_table_stmt_create(char *table_name, attr_node_header_t *at
 
 attr_node_header_t  *sql_create_attr(char *name, int data_type, uint16_t col_attr)
 {
-    attr_node_header_t *newNd = CALLOC_MEM(attr_node_header_t, 1);
-    CALLOC_CHK(newNd);
-    newNd->name = name;
-    newNd->is_data_valid = sql_check_data_validation; 
-    newNd->is_type_match = sql_check_data_type_match;
+    attr_node_header_t *newNd = sql_attr_header_node_create_and_init(name);
     if (data_type > DATA_TYPE_VARCHAR 
         && data_type <= (DATA_TYPE_VARCHAR + MAX_VARCHAR_LEN))     
     {
@@ -1176,6 +1192,8 @@ stmt_node_t *sql_show_all_table(void)
                 if(stmt)
                     free(stmt);
             }
+            db__table_info_update(table);
+            db__table_info_all_pages_write(table);
             table = table->next;
             printf("\n");
             
@@ -2621,6 +2639,31 @@ expr_node_t *sql_expr_aggregation_node_create(aggregation_type_e type, bool is_s
     new_expr_node->expr_info = (void *)aggregation_node;
     return new_expr_node;
 }
+
+void sql_recover_table_info_tuple(table_node_t *tbl)
+{
+    uint32_t tupleNum;
+    uint16_t offset, pageOffset, pageNum;
+    
+    char *page; 
+    int i;
+    tuple_t *tuple;
+    pageNum = ntohl(*(uint32_t *)(tbl->pageTable[0].page + DB_PAGE_HEADER_SIZE));
+    tupleNum = 0;
+    for (i = 1; i < pageNum; i++) {
+        offset = DB_PAGE_HEADER_SIZE;
+        page = tbl->pageTable[i].page;    
+        pageOffset = *(uint16_t *)(page + DB_PAGE_HEADER_OFFSET_OFFSET);
+        while (offset < pageOffset) {
+            tuple = sql_tuple_create_and_init();
+            db__page_tuple_info_unpacked(tbl, tuple, &offset, page);
+            tbl->add_tuple(tbl, tuple);
+            tupleNum++;
+        }
+    }
+    assert(tupleNum == tbl->tuple_num);
+}
+
 static void sql_recover_table_info(db_db_t *db)
 {
     char *tblName;
@@ -2633,6 +2676,8 @@ static void sql_recover_table_info(db_db_t *db)
         db__table_info_create(tbl);
         db__table_info_read(tbl);
         sql_cret_tbl_add_table(tbl);
+        db__table_info_all_pages_read(tbl);
+        sql_recover_table_info_tuple(tbl);
         sql_print_table(tbl);
     } 
 }
@@ -2650,14 +2695,6 @@ void sql_init()
     db__dbms_info_create(&dbms, "DBSQL");
     if (dbms.tbl_num)    
         sql_recover_table_info(&dbms);
-/*
-    char *tblName = strdup("jump");
-    table_node_t *tbl_read = sql_cret_tbl_table_create_and_init(tblName);
-    db__table_info_create(tbl_read);
-    db__table_info_read(tbl_read);
-    sql_cret_tbl_add_table(tbl_read);
-    sql_print_table(tbl_read);
-  */  
 }
 
 

@@ -7,22 +7,12 @@
 #include "table.h"
 #include "errors.h"
 
-#define DB_PAGE_SIZE 4096
-#define MAX_ATTR_NAME_SIZE (64) //bytes
-#define DB_PAGE_HEADER_SIZE (4)
-#define DB_PAGE_HEADER_OFFSET_TYPE      (0)
-#define DB_PAGE_HEADER_OFFSET_OFFSET    (2)
-
-#define TBL_INFO_OFFSET_ATTR_NUM        (4) 
-#define TBL_INFO_OFFSET_PKEY_NUM        (8)
-#define TBL_INFO_OFFSET_TUPLE_NUM       (12)
-#define TBL_INFO_OFFSET_ATTR_INFO       (16)
 
 typedef struct db_page_padding_s db_page_padding_t;
 struct db_page_padding_s {
     char padding[DB_PAGE_SIZE];
 };
-char zeroPadding[64];
+char zeroPadding[64] = {0};
 
 int db__table_info_create(table_node_t *tbl)
 {
@@ -66,12 +56,14 @@ int db__table_info_write(table_node_t *tbl)
     *(uint16_t *)(buff + DB_PAGE_HEADER_OFFSET_TYPE) = htons(pageType);
     *(uint16_t *)(buff + DB_PAGE_HEADER_OFFSET_OFFSET) = htons((pageHdrSize + o));
     bp__writer_write((bp__writer_t *)tbl, (void *)buff, &offset, &psize);
-    free(buff);
+    tbl->pageTable[0].valid_bit = 1;
+    tbl->pageTable[0].page = buff;
+    tbl->curr_page = 0;
     return BP_OK;
 }
 
 int db__table_info_read(table_node_t *tbl) 
-{
+{   
     int ret;
     char *page;
     char *tblInfo;
@@ -96,7 +88,7 @@ int db__table_info_read(table_node_t *tbl)
     for (i = 0; i < tbl->attr_num; i++) {
         hdrInfo = ntohl(*(uint32_t *)(tblInfo + o));
         nameLen = ntohl(*(uint32_t *)(tblInfo + o + 4));
-        tbl->attr[i] = malloc(sizeof(attr_node_header_t));
+        tbl->attr[i] = sql_attr_header_node_create_and_init(NULL);
         tbl->attr[i]->data_type = (hdrInfo&0x000000FF) ? DATA_TYPE_VARCHAR : DATA_TYPE_INT;
         tbl->attr[i]->varchar_len = (hdrInfo&0x0000FF00) >> 8;
         tbl->attr[i]->col_attr = (hdrInfo&0xFFFF0000) >> 16;
@@ -199,7 +191,7 @@ int db__dbms_info_table_write(db_db_t *db, table_node_t *tbl)
 
 int db__page_tuple_info_packed(table_node_t *tbl, tuple_t *tuple, uint16_t *size, void **buff)
 {
-    char *pack = malloc(MAX_TUPLE_INFO_BYTE)
+    char *pack = malloc(MAX_TUPLE_INFO_BYTE);
     uint16_t tupleLen = 0;
     uint8_t dataLen = 0;
     uint16_t attrBmp = 0;
@@ -209,19 +201,18 @@ int db__page_tuple_info_packed(table_node_t *tbl, tuple_t *tuple, uint16_t *size
 
     o = 4;
     for (i = 0; i < tbl->attr_num; i++) {
-        attr = tuple->find_attr_vals(tuple, tbl->attr[i]->name)
+        attr = tuple->find_attr_vals(tuple, tbl->attr[i]->name);
         if (!attr) continue;
         if (attr->header->data_type == DATA_TYPE_INT) {
             dataLen = sizeof(int);
-            *(uint8_t *)(pack + o) = dataLen;
             memcpy(pack + o + 1, &attr->value->int_value, dataLen);
             dataLen = dataLen << 1 | 1;
         } else {
-            dataLen = attr->value->var_len + 1;
-            *(uint8_t *)(pack + o) = dataLen;
-            memcpy(pack + o + 1, &attr->value->varchar_value, dataLen);
+            dataLen = strlen(attr->value->varchar_value) + 1;
+            memcpy(pack + o + 1, attr->value->varchar_value, dataLen);
             dataLen = dataLen << 1 | 0;
         }
+        *(uint8_t *)(pack + o) = dataLen;
         o += ((dataLen >> 1) + 1);
         attrBmp |= (1<<i);
     }
@@ -233,23 +224,150 @@ int db__page_tuple_info_packed(table_node_t *tbl, tuple_t *tuple, uint16_t *size
     return BP_OK;
 }
 
-int db__table_info_tuple_save(table_node_t *tbl, tuple_t *tuple) 
+int db__page_tuple_info_unpacked(table_node_t *tbl, tuple_t *tuple, uint16_t *offset, char *buff)
+{
+    uint16_t attrBmp, tupleSize, o;
+    uint8_t config, size;
+    attr_node_t *attrNd = NULL; 
+    attr_node_t *attrNdPrev = NULL; 
+    attr_node_t *attrHd = NULL; 
+    var_node_t *vals;
+    char *unpack = buff + *offset;
+    int i;
+    
+    attrBmp = *(uint16_t *)unpack;
+    tupleSize = *(uint16_t *)(unpack + 2);
+    o = 4;
+    for (i = 0; i < tbl->attr_num && attrBmp&(1<<i); i++) {
+        config = *(uint8_t *)(unpack + o);
+        vals = CALLOC_MEM(var_node_t, 1);
+        CALLOC_CHK(vals);
+        size = (config >> 1);
+        if (config & 0x0001) {
+            vals->type = DATA_TYPE_INT;
+            vals->int_value = *(int *)(unpack + o + 1);
+        } else {
+            vals->type = DATA_TYPE_VARCHAR;
+            vals->varchar_value = malloc(size);
+            memcpy(vals->varchar_value, unpack + o + 1, size);
+        }
+        attrNd = sql_attr_node_create_and_init(tbl->attr[i]);
+        attrNd->set_value(attrNd, vals);
+        o += (size + 1);
+        assert(o <= tupleSize);
+        if (attrHd) {
+            attrNdPrev->next = attrNd;
+            attrNdPrev = attrNd;
+        } else {
+            attrNdPrev = attrNd;
+            attrHd = attrNd;
+        }
+    }
+    tuple->add_attr_vals(tuple, attrHd);
+    *offset += tupleSize;
+    return BP_OK;
+}
+
+int db__table_info_page_write(table_node_t *tbl, const uint16_t pageId, void *page)
+{
+    uint64_t psize, offset;
+    int ret;
+    psize = DB_PAGE_SIZE;
+    offset = pageId * DB_PAGE_SIZE;
+    ret = bp__writer_pwrite((bp__writer_t *)tbl, offset, &psize, page);
+ 
+    return ret;
+}
+
+int db__table_info_all_pages_write(table_node_t *tbl)
+{
+    int i, ret = BP_OK;;
+    for (i = 0; i <= tbl->curr_page; i++) {
+        if (tbl->pageTable[i].dirty_bit) {
+            ret = db__table_info_page_write(tbl, i, tbl->pageTable[i].page);
+            if (ret != BP_OK) break;
+        }
+    }
+    return ret;
+}
+
+int db__table_info_update(table_node_t *tbl)
+{
+    char *page = (char *)(tbl->pageTable[0].page);
+    char *tblInfo = page + DB_PAGE_HEADER_SIZE;
+    
+    *(uint32_t *)(tblInfo) = htonl(tbl->curr_page + 1);
+    *(uint32_t *)(tblInfo + TBL_INFO_OFFSET_ATTR_NUM) = htonl(tbl->attr_num);
+    *(uint32_t *)(tblInfo + TBL_INFO_OFFSET_PKEY_NUM) = htonl(tbl->pkey_num);
+    *(uint32_t *)(tblInfo + TBL_INFO_OFFSET_TUPLE_NUM) = htonl(tbl->tuple_num);
+    tbl->pageTable[0].dirty_bit = 1;
+    
+    return BP_OK;
+}
+
+int db__table_info_tuple_save_in_mem(table_node_t *tbl, tuple_t *tuple) 
 {
     char *tupleInfo;
     uint16_t tupleSize, pageOffset;
     char *page = (char *)(tbl->pageTable[tbl->curr_page].page);
-    db__page_tuple_info_packed(tbl, tuple, &tupleSize, (void **)tupleInfo);
-    assert(page != NULL)
-    tbl->pageTable[tbl->curr_page].dirty_bit = 1;
+    
+    db__page_tuple_info_packed(tbl, tuple, &tupleSize, (void **)&tupleInfo);
+    assert(page != NULL);
+    
     pageOffset = *(uint16_t *)(page + DB_PAGE_HEADER_OFFSET_OFFSET);
-    if ( (pageOffset + tupleSize) <= DB_PAGE_SIZE) {
-        memcpy(page + pageOffset, tupleInfo, tupleSize);
-        // save (pageNum, offset) in tuple
-    } else {
-        // save current page to disk
-        //create a new one
+    if ( (pageOffset + tupleSize) > DB_PAGE_SIZE) {
+        db__table_info_page_write(tbl, tbl->curr_page, page);
         tbl->curr_page++;
+        tbl->pageTable[tbl->curr_page].valid_bit = 1;
+        page = calloc(1, DB_PAGE_SIZE);
+        *(uint16_t *)(page + DB_PAGE_HEADER_OFFSET_TYPE) = PAGE_TYPE_TUPLE;
+        pageOffset = DB_PAGE_HEADER_SIZE;
+        tbl->pageTable[tbl->curr_page].page = page;
     }
+    tuple->pageId = tbl->curr_page;
+    tuple->offset = pageOffset + tupleSize;
+    memcpy(page + pageOffset, tupleInfo, tupleSize);
+    *(uint16_t *)(page + DB_PAGE_HEADER_OFFSET_OFFSET) = pageOffset + tupleSize;
+    tbl->pageTable[tbl->curr_page].dirty_bit = 1;
+    
+    free(tupleInfo);
+    return BP_OK;
+}
+
+int db__table_info_page_read(table_node_t *tbl, const uint16_t pageId, void **page)
+{
+    uint64_t psize, offset;
+    int ret;
+    psize = DB_PAGE_SIZE;
+    offset = pageId * DB_PAGE_SIZE;
+    ret = bp__writer_read((bp__writer_t *)tbl, offset, &psize, page);
+ 
+    return ret;
+}
+
+int db__table_info_all_pages_read(table_node_t *tbl)
+{
+    char *page;
+    uint64_t psize, offset;
+    uint16_t pageNum;
+    int i, ret;
+    psize = DB_PAGE_SIZE;
+    ret = bp__writer_read((bp__writer_t *)tbl, 0, &psize, (void **)&page);
+    if (ret != BP_OK) return ret;
+
+    tbl->pageTable[0].page = page;
+    tbl->pageTable[0].valid_bit = 1;
+
+    pageNum = ntohl(*(uint32_t *)(page + DB_PAGE_HEADER_SIZE));
+    assert(tbl->curr_page <= pageNum);
+
+    for (i = 1; i < pageNum; i++) {
+        ret = db__table_info_page_read(tbl, i, (void **)&page);
+        if (ret != BP_OK) return ret;
+        tbl->pageTable[i].page = page;
+        tbl->pageTable[i].valid_bit = 1;
+    }
+    return BP_OK;
 }
 
 /*
