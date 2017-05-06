@@ -6,6 +6,7 @@
 #include <stdlib.h> /* malloc, free */
 #include <stdio.h> /* sprintf */
 #include <string.h> /* memset */
+#include <assert.h>
 #include <errno.h> /* errno */
 
 int bp__writer_create(bp__writer_t *w, const char *filename)
@@ -20,7 +21,7 @@ int bp__writer_create(bp__writer_t *w, const char *filename)
     memcpy(w->filename, filename, filename_length);
 
     w->fd = open(filename,
-                 O_RDWR | O_APPEND | O_CREAT,
+                 O_RDWR | O_CREAT,
                  S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
     if (w->fd == -1) goto error;
 
@@ -97,13 +98,18 @@ int bp__writer_pwrite(bp__writer_t *w,
                       uint64_t *size,
                       void *data)
 {
+    off_t o;
     ssize_t written;
     if ( *size == 0 ) 
         return BP_OK;
 
-    written = pwrite(w->fd, data, *size, offset);
+    o = lseek(w->fd, offset, SEEK_SET);
+    assert(o == offset);
+    written = write(w->fd, data, *size);
+    //written = pwrite(w->fd, data, *size, offset);
     if ((uint64_t) written != *size) return BP_EFILEWRITE;
     
+    fsync(w->fd);
     return BP_OK; 
 }
 

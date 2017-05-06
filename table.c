@@ -117,16 +117,26 @@ int db__dbms_info_create(db_db_t *db, char *name)
     return BP_OK;
 }
 
+int db__dbms_info_destroy(db_db_t *db)
+{
+    return bp__writer_destroy((bp__writer_t *)db);
+}
+
 int db__dbms_info_init(db_db_t *db)
 {
-    char *buff = malloc(DB_PAGE_SIZE);
+    char *buff = calloc(1, DB_PAGE_SIZE);
+    int ret;
     uint64_t offset = 0;
     uint64_t psize = DB_PAGE_SIZE;
     *(uint16_t *)(buff + DB_PAGE_HEADER_OFFSET_TYPE) = PAGE_TYPE_DATABASE;
     *(uint16_t *)(buff + DB_PAGE_HEADER_OFFSET_OFFSET) = DB_PAGE_HEADER_SIZE + 8;
-    *(uint64_t *)(buff + DB_PAGE_HEADER_SIZE) = 0;
     
-    return bp__writer_write((bp__writer_t *)db, (void *)buff, &offset, &psize);
+    ret = bp__writer_pwrite((bp__writer_t *)db, offset, &psize, buff);
+    free(buff);
+    if (ret != BP_OK) return ret;
+    
+    return BP_OK;
+    //return bp__writer_write((bp__writer_t *)db, (void *)buff, &offset, &psize);
 }
 
 int db__dbms_info_table_try_read(db_db_t *db)
@@ -140,6 +150,7 @@ int db__dbms_info_table_try_read(db_db_t *db)
     rsize = DB_PAGE_SIZE;
     ret = bp__writer_read((bp__writer_t *)db, 0, &rsize, (void **)&buff);
     if (ret != BP_OK) return ret;
+    
     pageType = *(uint16_t *)buff;
     assert(pageType == PAGE_TYPE_DATABASE 
             && (*(uint16_t *)(buff + DB_PAGE_HEADER_OFFSET_OFFSET) != 0));
@@ -154,7 +165,7 @@ int db__dbms_info_table_try_read(db_db_t *db)
         o += 16;
     }
     db->tbl_num = tblNum;
-
+    free(buff);
     return BP_OK;
 }
 
@@ -184,7 +195,7 @@ int db__dbms_info_table_write(db_db_t *db, table_node_t *tbl)
     *(uint64_t *)(buff + DB_PAGE_HEADER_SIZE) = tblNum;
     db->tbl_num = tblNum;
     bp__writer_pwrite((bp__writer_t *)db, offset, &psize, buff);
-
+    free(buff);
     return BP_OK;
 }
 
