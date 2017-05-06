@@ -79,7 +79,8 @@ int db__table_info_read(table_node_t *tbl)
     assert(pageType == PAGE_TYPE_TBL_HEADER);
 
     tblInfo = page + DB_PAGE_HEADER_SIZE;
-
+    
+    tbl->curr_page = ntohl(*(uint32_t *)(tblInfo + o )) - 1;
     tbl->attr_num = ntohl(*(uint32_t *)(tblInfo + o + TBL_INFO_OFFSET_ATTR_NUM));
     tbl->pkey_num = ntohl(*(uint32_t *)(tblInfo + o + TBL_INFO_OFFSET_PKEY_NUM));
     tbl->tuple_num = ntohl(*(uint32_t *)(tblInfo + o + TBL_INFO_OFFSET_TUPLE_NUM));

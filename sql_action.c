@@ -2656,12 +2656,23 @@ void sql_recover_table_info_tuple(table_node_t *tbl)
         pageOffset = *(uint16_t *)(page + DB_PAGE_HEADER_OFFSET_OFFSET);
         while (offset < pageOffset) {
             tuple = sql_tuple_create_and_init();
+            tuple->pageId = i;
+            tuple->offset = offset;
             db__page_tuple_info_unpacked(tbl, tuple, &offset, page);
             tbl->add_tuple(tbl, tuple);
             tupleNum++;
         }
     }
     assert(tupleNum == tbl->tuple_num);
+}
+static void sql_recover_table_info_pkey(table_node_t *tbl)
+{
+    int i;
+    for (i = 0; i < tbl->attr_num; i++) {
+        if (tbl->attr[i]->col_attr & ATTR_PRIKEY) {
+            tbl->add_prikey_attr(tbl, tbl->attr[i]);
+        }       
+    }
 }
 
 static void sql_recover_table_info(db_db_t *db)
@@ -2675,6 +2686,7 @@ static void sql_recover_table_info(db_db_t *db)
         tbl = sql_cret_tbl_table_create_and_init(tblName);
         db__table_info_create(tbl);
         db__table_info_read(tbl);
+        sql_recover_table_info_pkey(tbl);
         sql_cret_tbl_add_table(tbl);
         db__table_info_all_pages_read(tbl);
         sql_recover_table_info_tuple(tbl);
