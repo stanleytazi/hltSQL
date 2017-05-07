@@ -12,7 +12,7 @@ extern "C" {
     char *value;
 
 #include <stdint.h> /* uintx_t */
-#include "errors.h"
+#include "private/errors.h"
 
 typedef struct bp_db_s bp_db_t;
 

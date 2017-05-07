@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include "writer.h"
+#include "dbwriter.h"
 #include "page.h"
 #define MAX_ATTR_NUM 20
 #define MAX_VARCHAR_LEN 9999
@@ -18,6 +18,7 @@ typedef struct __ATTR_NODE_HEADER_S__ attr_node_header_t;
 typedef struct __ATTR_NODE_S__ attr_node_t;
 typedef struct __COL_LIST_NODE_S__ col_node_t;
 typedef struct __TABLE_NODE__ table_node_t;
+typedef struct stmt_node_s stmt_node_t;
 typedef enum {
     DATA_TYPE_NAME = 0,
     DATA_TYPE_INT = 50000,
@@ -123,12 +124,12 @@ struct __TABLE_NODE__ {
     struct __TABLE_NODE__ *next;
 };
 
-typedef struct {
+struct stmt_node_s{
     stmt_type_e type;
     void *stmt_info;
-    void (*stmt_save)(void *self, stmt_type_e type, void *info);
+    void (*stmt_save)(stmt_node_t *self, stmt_type_e type, void *info);
 
-} stmt_node_t;
+};
 
 
 struct __COL_LIST_NODE_S__{

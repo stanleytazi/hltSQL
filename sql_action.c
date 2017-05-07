@@ -5,7 +5,7 @@
 #include <assert.h>
 #include "node.h"
 #include "table.h"
-
+#include "treeIdx.h"
 #define SELECT_LOG "select_log.txt"
 
 
@@ -16,6 +16,7 @@ typedef bool (*sql_cmp_two_tuple)(tuple_t *new, tuple_t *exist, attr_node_header
 typedef void (*stmt_dstry_func)(stmt_node_t*);
 static table_node_t *table_list[MAX_TABLE_ENTRY] = { NULL };
 static db_db_t dbms;
+static bp_db_t db_tree;
 stmt_dstry_func *stmt_dstry;
 
 
@@ -28,6 +29,10 @@ bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList);
 char *sql_sel_find_tbl_name(sel_rec_t *rec, char *pfx);
 bool sql_sel_collect_attr(sel_rec_t *rec, select_col_node_t* colList);
 void printAttrList(sel_rec_t *rec);
+int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, const char *attrName);
+int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, data_type_e dataType, int int_value, char *varchar_value, tuple_t **tupleOut);
+int sql_idx_get_tuple_range(bp_db_t *db, table_node_t *tbl, var_node_t *start, var_node_t *end, tuple_t **tupleOut);
+
 static inline char *sql_data_type_translate(data_type_e type)
 {
     char *type_s = NULL;
@@ -2603,12 +2608,12 @@ void sql_recover_table_info_tuple(table_node_t *tbl)
 {
     uint32_t tupleNum;
     uint16_t offset, pageOffset, pageNum;
-    
     char *page; 
     int i;
     tuple_t *tuple;
     pageNum = ntohl(*(uint32_t *)(tbl->pageTable[0].page + DB_PAGE_HEADER_SIZE));
     tupleNum = 0;
+
     for (i = 1; i < pageNum; i++) {
         offset = DB_PAGE_HEADER_SIZE;
         page = tbl->pageTable[i].page;    
@@ -2617,13 +2622,17 @@ void sql_recover_table_info_tuple(table_node_t *tbl)
             tuple = sql_tuple_create_and_init();
             tuple->pageId = i;
             tuple->offset = offset;
+            printf("(%d, %d)\n", i, offset);
             db__page_tuple_info_unpacked(tbl, tuple, &offset, page);
             tbl->add_tuple(tbl, tuple);
             tupleNum++;
         }
     }
+    if (tbl->find_attr(tbl, "userid") && strcmp(tbl->name, "user1")==0 )
+        sql_set_table_idx_tree(&db_tree, tbl, "userid");
     assert(tupleNum == tbl->tuple_num);
 }
+
 static void sql_recover_table_info_pkey(table_node_t *tbl)
 {
     int i;
@@ -2640,7 +2649,8 @@ static void sql_recover_table_info(db_db_t *db)
     table_node_t *tbl;
     int i;
 
-    for (i = 0; i < db->tbl_num; i++) {
+    //for (i = 0; i < db->tbl_num; i++) {
+    for (i = 0; i < 1; i++) {
         tblName = strdup(db->tbl[i].name);
         tbl = sql_cret_tbl_table_create_and_init(tblName);
         db__table_info_create(tbl);
@@ -2649,9 +2659,197 @@ static void sql_recover_table_info(db_db_t *db)
         sql_cret_tbl_add_table(tbl);
         db__table_info_all_pages_read(tbl);
         sql_recover_table_info_tuple(tbl);
-        sql_print_table(tbl);
-    } 
+        //sql_print_table(tbl);
+    }
+
+    // test
+    
+    char *value;
+    char key[64];
+    sprintf(key, "%d", 20);
+    if (db__tree_idx_gets(&db_tree, key, &value) != BP_OK)
+        printf("get fails\n");
+    else
+        printf("tuple address: %s\n", value);
+    tuple_t *tuple;
+    //sql_idx_get_tuple(&db_tree, tbl, DATA_TYPE_INT, 20, NULL, &tuple);
+    var_node_t v1, v2;
+    v1.type = DATA_TYPE_INT;
+    v2.type = DATA_TYPE_INT;
+    v1.int_value = 9989;
+    v2.int_value = 9999;
+    sql_idx_get_tuple_range(&db_tree, tbl, &v1, &v2, &tuple);
 }
+
+//int sql_idx_get_tuple_range(bp_db_t *db, table_node_t *tbl, var_node_t *start, var_node_t *end, tuple_t **tupleOut)
+//int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, data_type_e dataType, int int_value, char *varchar_value, tuple_t **tupleOut)
+void sql_gen_key_string(attr_node_t *attr, char *key)
+{
+    if (attr->header->data_type == DATA_TYPE_INT) {
+        sprintf(key, "%d", attr->value->int_value);
+    } else {
+        strcpy(key, attr->value->varchar_value);
+    }
+}
+
+int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, const char *attrName)
+{
+    size_t size = strlen(tbl->name) + strlen(attrName) + strlen("tree") + 6; 
+    char *fileName = malloc(size);
+    char key[64];
+    char *value = malloc(64);
+    tuple_t *tuple = tbl->tuple_list_head;
+    attr_node_t *attr = NULL;
+    int ret;
+    sprintf(fileName, "%s_%s_tree.bp", tbl->name, attrName);
+    ret = db__tree_idx_create(db, fileName);
+    if (ret != BP_OK) return ret;
+    while (tuple) {
+        attr = tuple->find_attr_vals(tuple, (char *)attrName);
+        if (attr) {
+            sql_gen_key_string(attr, key);
+            //address can be in-memory addr
+            sprintf(value, ",%d_%d", tuple->pageId, tuple->offset);        
+            printf("key = %s, value = %s\n", key, value);
+            ret = db__tree_idx_sets(db, key, &value);
+            if (ret != BP_OK)
+                printf("insert(idx) fails => \n\ttable:%s, attr:%s, value:%s\n",
+                        tbl->name, attrName, value);
+        }
+        tuple = tuple->next;
+    }
+    return ret;
+}
+// start < TARGET < end
+// if start = NULL, comp_type = less than
+
+int sql_idx_get_tuple_range(bp_db_t *db, table_node_t *tbl, var_node_t *start, var_node_t *end, tuple_t **tupleOut)
+{
+    data_type_e dataType;
+    tree_range_t r;
+    r.qual_num = 0;
+    char *delim = ",";
+    char *output;
+    char *page;
+    char *value;
+    uint16_t pageId, offset;
+    tuple_t *tuple;
+    table_node_t *tmpTbl = sql_cret_tbl_table_create_and_init("tmpInFunc");
+    int ret, i;
+
+    if (start)
+        dataType = start->type;
+    if (end)
+        assert(dataType == end->type);
+
+    if (dataType == DATA_TYPE_INT) {
+        char key1[64];
+        char key2[64];
+        sprintf(key1, "%d", start->int_value);
+        sprintf(key2, "%d", end->int_value);
+        ret = db__tree_idx_get_range(db, key1, key2, (void *)&r);
+    } else {
+        ret = db__tree_idx_get_range(db, start->varchar_value, end->varchar_value, (void *)&r);
+    }
+    
+    if (ret != BP_OK) {
+        printf("fail in idx get tuple\n");
+        return ret;
+    }
+
+    for (i = 0; i < r.qual_num; i++) {
+        
+        value = r.addr[i];
+        if (value && (ret == BP_OK)) {
+            output = strtok(value, delim);
+
+            while (output != NULL) {
+                printf("%s\n",value);
+                sscanf(output, "%hd_%hd", &pageId, &offset);
+        
+                if (tbl->pageTable[pageId].valid_bit == 0) {
+                    ret = db__table_info_page_fault_hdl(tbl, pageId, (char **)&page);
+                } else {
+                    page = tbl->pageTable[pageId].page;
+                }
+                tuple = sql_tuple_create_and_init();
+                tuple->pageId = pageId;
+                tuple->offset = offset;
+                db__page_tuple_info_unpacked(tbl, tuple, &offset, page);
+                tmpTbl->add_tuple(tmpTbl, tuple);
+                output = strtok(NULL, delim);
+            }
+        }
+        free(value);
+    }
+    if (ret!=BP_OK) {
+        tuple = tmpTbl->tuple_list_head;
+        tuple_t *tmpTuple;
+        while (tuple) {
+            tmpTuple = tuple->next;
+            free(tuple);
+            tuple = tmpTuple;
+        }
+        goto fatal;
+    }
+    *tupleOut = tmpTbl->tuple_list_head;
+fatal:
+    free(tmpTbl);
+    return ret;
+}
+
+
+int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, data_type_e dataType, int int_value, char *varchar_value, tuple_t **tupleOut)
+{
+    char *value;
+    char *delim = ",";
+    char *output;
+    char *page;
+    uint16_t pageId, offset;
+    int ret;
+    tuple_t *tuple;
+    table_node_t *tmpTbl = sql_cret_tbl_table_create_and_init("tmpInFunc");
+
+    if (dataType == DATA_TYPE_INT) {
+        char key[64];
+        sprintf(key,"%d", int_value);
+        ret = db__tree_idx_gets(db, key, &value);
+    } else {
+        ret = db__tree_idx_gets(db, varchar_value, &value);
+    }
+    if (ret != BP_OK) {
+        printf("fail in idx get tuple\n");
+        free(tmpTbl);
+        return ret;
+    }
+    // note: input: value, tbl
+    output = strtok(value, delim);
+
+    while (output != NULL) {
+        printf("%s\n",value);
+        sscanf(output, "%hd_%hd", &pageId, &offset);
+        
+        if (tbl->pageTable[pageId].valid_bit == 0) {
+            ret = db__table_info_page_fault_hdl(tbl, pageId, (char **)&page);
+            if (ret != BP_OK) goto fatal;
+        } else {
+            page = tbl->pageTable[pageId].page;
+        }
+        tuple = sql_tuple_create_and_init();
+        tuple->pageId = pageId;
+        tuple->offset = offset;
+        db__page_tuple_info_unpacked(tbl, tuple, &offset, page);
+        tmpTbl->add_tuple(tmpTbl, tuple);
+        output = strtok(NULL, delim);
+    }
+    *tupleOut = tmpTbl->tuple_list_head;
+
+fatal:
+    free(value);
+    free(tmpTbl); 
+    return ret;
+}
+
 
 void sql_init()
 {
@@ -2660,9 +2858,9 @@ void sql_init()
     CALLOC_CHK(stmt_dstry);
     stmt_dstry[STMT_TYPE_CREATE_TABLE] = sql_cret_tbl_stmt_destroy;
     stmt_dstry[STMT_TYPE_INSERT_TUPLE] = sql_insr_tpl_stmt_destroy;
-
-    // test table save
     
+    // test table save
+    //db__tree_idx_create(&db_tree, "bplus_idx.bp");
     db__dbms_info_create(&dbms, "DBSQL");
     if (dbms.tbl_num)    
         sql_recover_table_info(&dbms);
