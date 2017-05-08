@@ -8,6 +8,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include "node.h"
+#include "cret_idx.h"
 void yyerror(char *s, ...);
 void show_log(char *s, ...);
 #if YYBISON
@@ -96,6 +97,7 @@ int yylex();
 %token CONTINUE
 %token CONVERT
 %token CREATE
+%token CREATE_INDEX
 %token CROSS
 %token CURRENT_DATE
 %token CURRENT_TIME
@@ -309,7 +311,7 @@ int yylex();
 %type <intval> column_atts data_type opt_ignore_replace 
 %type <attr_node> create_col_list
 %type <col_node> column_list opt_col_names
-%type <stmt_node> create_table_stmt insert_stmt stmt show_log_stmt import_file_stmt test_stmt
+%type <stmt_node> create_table_stmt insert_stmt stmt show_log_stmt import_file_stmt create_index_stmt test_stmt
 %type <expr_node> expr
 %type <alias_name> opt_as_alias//0401
 %type <select_col_node> select_expr select_expr_list//0401
@@ -422,6 +424,15 @@ insert_asgn_list:
                  show_log("DEFAULT"); show_log("ASSIGN %s", $3); free($3); $$ = $1 + 1; }
    ;
 
+
+   /** create index **/
+stmt: create_index_stmt { $$ = $1;show_log("STMT"); }
+   ;
+
+create_index_stmt: CREATE_INDEX '(' column_list')' ON NAME '('column_list ')'
+                 { $$ = sql_cret_index_stmt_create($6, $3, $8); printf("create index\n");}
+    | CREATE_INDEX ON {show_log("create index2\n");}
+    ;
    /** create table **/
 stmt: create_table_stmt { $$ = $1;show_log("STMT"); }
    ;
@@ -473,7 +484,6 @@ create_definition: /* nil*/ {printf("NULL column\n");}
 
     | PRIMARY KEY '(' column_list ')'    { $$ = sql_cret_def_pk_def_node_create($4); show_log("PRIKEY %d", $4); }
     | KEY '(' column_list ')'            { show_log("KEY %d", $3); }
-    | INDEX '(' column_list ')'          { show_log("KEY %d", $3); }
     | FULLTEXT INDEX '(' column_list ')' { show_log("TEXTINDEX %d", $4); }
     | FULLTEXT KEY '(' column_list ')'   { show_log("TEXTINDEX %d", $4); }
     ;

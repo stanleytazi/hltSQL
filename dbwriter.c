@@ -1,5 +1,5 @@
-#include "dbwriter.h"
-#include "./privat/errors.h"
+#include "writer.h"
+#include "errors.h"
 #include <fcntl.h> /* open */
 #include <unistd.h> /* close, write, read */
 #include <sys/stat.h> /* S_IWUSR, S_IRUSR */

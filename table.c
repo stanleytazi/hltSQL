@@ -3,9 +3,9 @@
 #include <string.h>
 #include <assert.h>
 #include "node.h"
-#include "writer.h"
+#include "dbwriter.h"
 #include "table.h"
-#include "errors.h"
+#include "./private/errors.h"
 
 
 typedef struct db_page_padding_s db_page_padding_t;
@@ -16,12 +16,12 @@ char zeroPadding[64] = {0};
 
 int db__table_info_create(table_node_t *tbl)
 {
-    return bp__writer_create((bp__writer_t *)tbl, tbl->name);
+    return db__writer_create((bp__writer_t *)tbl, tbl->name);
 }
 
 int db__table_info_destroy(table_node_t *tbl)
 {
-    return bp__writer_destroy((bp__writer_t *)tbl);
+    return db__writer_destroy((bp__writer_t *)tbl);
 }
 int db__table_info_write(table_node_t *tbl) 
 {
@@ -55,7 +55,7 @@ int db__table_info_write(table_node_t *tbl)
     uint16_t pageType = PAGE_TYPE_TBL_HEADER;
     *(uint16_t *)(buff + DB_PAGE_HEADER_OFFSET_TYPE) = htons(pageType);
     *(uint16_t *)(buff + DB_PAGE_HEADER_OFFSET_OFFSET) = htons((pageHdrSize + o));
-    bp__writer_write((bp__writer_t *)tbl, (void *)buff, &offset, &psize);
+    db__writer_write((bp__writer_t *)tbl, (void *)buff, &offset, &psize);
     tbl->pageTable[0].valid_bit = 1;
     tbl->pageTable[0].page = buff;
     tbl->curr_page = 0;
@@ -72,8 +72,11 @@ int db__table_info_read(table_node_t *tbl)
     int i;
     uint32_t hdrInfo = 0, nameLen = 0;
     uint16_t pageType;
-    ret = bp__writer_read((bp__writer_t *)tbl, 0, &psize, (void **)&page);
+    ret = db__writer_read((bp__writer_t *)tbl, 0, &psize, (void **)&page);
     if (ret != BP_OK) return ret;
+    
+    tbl->pageTable[0].page = page;
+    tbl->pageTable[0].valid_bit = 1;
     
     pageType = ntohs(*(uint16_t *)page);
     assert(pageType == PAGE_TYPE_TBL_HEADER);
@@ -98,7 +101,7 @@ int db__table_info_read(table_node_t *tbl)
         o = o + 8 + sizeof(zeroPadding);
     }
 
-    free(page);
+    //free(page);
     return BP_OK;
 }
 
@@ -110,7 +113,7 @@ int db__table_info_read(table_node_t *tbl)
 
 int db__dbms_info_create(db_db_t *db, char *name)
 {
-    bp__writer_create((bp__writer_t *)db, name);
+    db__writer_create((bp__writer_t *)db, name);
     if (db__dbms_info_table_try_read(db) != BP_OK) {
         db__dbms_info_init(db);
     }
@@ -119,7 +122,7 @@ int db__dbms_info_create(db_db_t *db, char *name)
 
 int db__dbms_info_destroy(db_db_t *db)
 {
-    return bp__writer_destroy((bp__writer_t *)db);
+    return db__writer_destroy((bp__writer_t *)db);
 }
 
 int db__dbms_info_init(db_db_t *db)
@@ -131,7 +134,7 @@ int db__dbms_info_init(db_db_t *db)
     *(uint16_t *)(buff + DB_PAGE_HEADER_OFFSET_TYPE) = PAGE_TYPE_DATABASE;
     *(uint16_t *)(buff + DB_PAGE_HEADER_OFFSET_OFFSET) = DB_PAGE_HEADER_SIZE + 8;
     
-    ret = bp__writer_pwrite((bp__writer_t *)db, offset, &psize, buff);
+    ret = db__writer_pwrite((bp__writer_t *)db, offset, &psize, buff);
     free(buff);
     if (ret != BP_OK) return ret;
     
@@ -148,7 +151,7 @@ int db__dbms_info_table_try_read(db_db_t *db)
     int ret, i;
 
     rsize = DB_PAGE_SIZE;
-    ret = bp__writer_read((bp__writer_t *)db, 0, &rsize, (void **)&buff);
+    ret = db__writer_read((bp__writer_t *)db, 0, &rsize, (void **)&buff);
     if (ret != BP_OK) return ret;
     
     pageType = *(uint16_t *)buff;
@@ -177,7 +180,7 @@ int db__dbms_info_table_write(db_db_t *db, table_node_t *tbl)
     uint16_t pageType;
     int i, ret;
     psize = DB_PAGE_SIZE;
-    ret = bp__writer_read((bp__writer_t *)db, 0, &psize, (void **)&buff);
+    ret = db__writer_read((bp__writer_t *)db, 0, &psize, (void **)&buff);
     if (ret != BP_OK) return ret;
     pageType = *(uint16_t *)buff;
     assert(pageType == PAGE_TYPE_DATABASE 
@@ -194,7 +197,7 @@ int db__dbms_info_table_write(db_db_t *db, table_node_t *tbl)
     tblNum++;
     *(uint64_t *)(buff + DB_PAGE_HEADER_SIZE) = tblNum;
     db->tbl_num = tblNum;
-    bp__writer_pwrite((bp__writer_t *)db, offset, &psize, buff);
+    db__writer_pwrite((bp__writer_t *)db, offset, &psize, buff);
     free(buff);
     return BP_OK;
 }
@@ -286,7 +289,7 @@ int db__table_info_page_write(table_node_t *tbl, const uint16_t pageId, void *pa
     int ret;
     psize = DB_PAGE_SIZE;
     offset = pageId * DB_PAGE_SIZE;
-    ret = bp__writer_pwrite((bp__writer_t *)tbl, offset, &psize, page);
+    ret = db__writer_pwrite((bp__writer_t *)tbl, offset, &psize, page);
  
     return ret;
 }
@@ -352,9 +355,18 @@ int db__table_info_page_read(table_node_t *tbl, const uint16_t pageId, void **pa
     int ret;
     psize = DB_PAGE_SIZE;
     offset = pageId * DB_PAGE_SIZE;
-    ret = bp__writer_read((bp__writer_t *)tbl, offset, &psize, page);
+    ret = db__writer_read((bp__writer_t *)tbl, offset, &psize, page);
  
     return ret;
+}
+int db__table_info_page_fault_hdl(table_node_t *tbl, uint16_t id, char **page)
+{
+    int ret; 
+    ret = db__table_info_page_read(tbl, id, (void **)page);
+    if (ret != BP_OK) return ret;
+    tbl->pageTable[id].page = *page;
+    tbl->pageTable[id].valid_bit = 1;
+    return BP_OK;
 }
 
 int db__table_info_all_pages_read(table_node_t *tbl)
@@ -364,7 +376,7 @@ int db__table_info_all_pages_read(table_node_t *tbl)
     uint16_t pageNum;
     int i, ret;
     psize = DB_PAGE_SIZE;
-    ret = bp__writer_read((bp__writer_t *)tbl, 0, &psize, (void **)&page);
+    ret = db__writer_read((bp__writer_t *)tbl, 0, &psize, (void **)&page);
     if (ret != BP_OK) return ret;
 
     tbl->pageTable[0].page = page;
@@ -374,16 +386,8 @@ int db__table_info_all_pages_read(table_node_t *tbl)
     assert(tbl->curr_page <= pageNum);
 
     for (i = 1; i < pageNum; i++) {
-        ret = db__table_info_page_read(tbl, i, (void **)&page);
-        if (ret != BP_OK) return ret;
-        tbl->pageTable[i].page = page;
-        tbl->pageTable[i].valid_bit = 1;
+        ret = db__table_info_page_fault_hdl(tbl, i, (char **)&page);
     }
     return BP_OK;
 }
 
-/*
-int db__dbms_info_table_read(db_db_t *db) 
-{
-    
-}*/

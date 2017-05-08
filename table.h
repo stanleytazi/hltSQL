@@ -57,6 +57,7 @@ int db__page_tuple_info_unpacked(table_node_t *tbl, tuple_t *tuple, uint16_t *of
 int db__table_info_page_write(table_node_t *tbl, const uint16_t pageId, void *page);
 int db__table_info_all_pages_write(table_node_t *tbl);
 int db__table_info_all_pages_read(table_node_t *tbl);
+int db__table_info_page_fault_hdl(table_node_t *tbl, uint16_t id, char **page);
 int db__dbms_info_init(db_db_t *db);
 int db__dbms_info_create(db_db_t *db, char *name);
 int db__dbms_info_table_write(db_db_t *db, table_node_t *tbl);
