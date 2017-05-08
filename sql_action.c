@@ -6,6 +6,8 @@
 #include "node.h"
 #include "table.h"
 #include "treeIdx.h"
+#include "hashIdx.h"
+//0508
 #include "cret_idx.h"
 #define SELECT_LOG "select_log.txt"
 

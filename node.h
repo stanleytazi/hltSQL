@@ -8,6 +8,8 @@
 #include "dbwriter.h"
 #include "page.h"
 #include "bplus.h"
+#include "index.h"
+//0508
 #define MAX_ATTR_NUM 20
 #define MAX_VARCHAR_LEN 9999
 #define MAX_TUPLE_ATTR_HASH_SIZE 32
