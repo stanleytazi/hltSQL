@@ -26,7 +26,7 @@ OBJ := pmysql.tab.o pmysql.o sql_action.o dbwriter.o table.o treeIdx.o cret_idx.
 all: $(EXE)
 
 $(EXE): $(OBJ)
-	${CC} -o $@ $(OBJ) bplus.a
+	${CC} -o $@ $(OBJ) bplus.a -lpthread
 
 pmysql.tab.c pmysql.tab.h: pmysql.y
 	${YACC} -vd --debug pmysql.y
