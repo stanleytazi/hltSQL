@@ -921,7 +921,7 @@ void sql_stmt_handle(stmt_node_t *stmt)
             //printf("invalid stmt\n");
             break;
         }
-        //if(!hdlPass) stmt_dstry[stmt->type](stmt);
+        if(!hdlPass) stmt_dstry[stmt->type](stmt);
         free(stmt);
     }
 }
@@ -1335,6 +1335,15 @@ void sql_insr_tpl_stmt_destroy(stmt_node_t *stmtNd)
     sql_free_insr_vals_node(vals);
     free(insrStmt->table_name);
 }
+
+void  sql_cret_idx_stmt_destroy(stmt_node_t *stmtNd)
+{
+    cret_idx_stmt_t *cretIdxStmt = (cret_idx_stmt_t *)stmtNd->stmt_info;
+    sql_free_col(cretIdxStmt->idxName);
+    sql_free_col(cretIdxStmt->col_list);
+    free(cretIdxStmt->tblName);
+}
+
 //0401//0405//
 select_col_node_t *sql_select_col_node_create(expr_node_t *expr_node, char *alias_name, bool is_prefix_dot_star){
     //return a col_node to select_expr->select_expr_list->select_stmt
@@ -2887,7 +2896,7 @@ void sql_init()
     CALLOC_CHK(stmt_dstry);
     stmt_dstry[STMT_TYPE_CREATE_TABLE] = sql_cret_tbl_stmt_destroy;
     stmt_dstry[STMT_TYPE_INSERT_TUPLE] = sql_insr_tpl_stmt_destroy;
-    
+    stmt_dstry[STMT_TYPE_CREATE_INDEX] = sql_cret_idx_stmt_destroy;
     // test table save
     //db__tree_idx_create(&db_tree, "bplus_idx.bp");
     db__dbms_info_create(&dbms, "DBSQL");
