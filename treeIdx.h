@@ -11,6 +11,8 @@ int db__tree_idx_create(bp_db_t *db, char *name);
 int db__tree_idx_sets(bp_db_t *db, char *key, char **value);
 int db__tree_idx_gets(bp_db_t *db, const char *key, char **value);
 int db__tree_idx_get_range(bp_db_t *db, const char *start, const char *end, void *arg);
+void db__tree_set_str_compare_cb(bp_db_t *db);
+void db__tree_set_num_compare_cb(bp_db_t *db);
 
 
 #endif

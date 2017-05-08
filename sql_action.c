@@ -6,6 +6,7 @@
 #include "node.h"
 #include "table.h"
 #include "treeIdx.h"
+#include "cret_idx.h"
 #define SELECT_LOG "select_log.txt"
 
 
@@ -29,9 +30,10 @@ bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList);
 char *sql_sel_find_tbl_name(sel_rec_t *rec, char *pfx);
 bool sql_sel_collect_attr(sel_rec_t *rec, select_col_node_t* colList);
 void printAttrList(sel_rec_t *rec);
-int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, const char *attrName);
+int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, col_node_t *col_list);
 int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, data_type_e dataType, int int_value, char *varchar_value, tuple_t **tupleOut);
 int sql_idx_get_tuple_range(bp_db_t *db, table_node_t *tbl, var_node_t *start, var_node_t *end, tuple_t **tupleOut);
+bool sql_create_idx_stmt_handle(cret_idx_stmt_t *cretIdxStmt);
 
 static inline char *sql_data_type_translate(data_type_e type)
 {
@@ -847,6 +849,23 @@ void sql_cret_tbl_page_init(table_node_t *tbl, uint16_t pageId)
     tbl->pageTable[pageId].page = page;
 }
 
+bool sql_create_idx_stmt_handle(cret_idx_stmt_t *cretIdxStmt)
+{
+    int ret;
+    table_node_t *tbl = sql_find_table(cretIdxStmt->tblName);
+    if (strstr(cretIdxStmt->idxName->name, "tree") != NULL) {
+        ret = sql_set_table_idx_tree(&tbl->btree[tbl->btree_num].tree, tbl, cretIdxStmt->col_list);
+        //TODO: insert file Name into btree.name;
+        if (ret != BP_OK) goto fatal;
+        tbl->btree_num++;
+    } else if (strstr(cretIdxStmt->idxName->name, "hash") != NULL) {
+        //HL_TODO: create hash idx 
+    } else {
+        printf("Tree or Hash ?\n");
+    }
+fatal:
+    return false;
+}
 
 bool sql_insert_stmt_handle(insert_stmt_t *insr_stmt)
 {
@@ -894,6 +913,8 @@ void sql_stmt_handle(stmt_node_t *stmt)
         case STMT_TYPE_SELECT_TUPLE:
             hdlPass = sql_select_stmt_handle((select_stmt_t *)(stmt->stmt_info));
             break;
+        case STMT_TYPE_CREATE_INDEX:
+            hdlPass = sql_create_idx_stmt_handle((cret_idx_stmt_t *)(stmt->stmt_info));
         case STMT_TYPE_SHOW_LOG:
             //free(stmt);
         default:
@@ -1017,22 +1038,6 @@ col_node_t *sql_col_list_node_create(char *name, col_node_t *list, bool is_head)
         cNode->head = cNode;
         return cNode;
     }
-    /*
-    if (name)
-        col_node->name = strdup(name);
-    col_node->next = NULL;
-    if (is_head) {
-        col_node->head = col_node;
-        col_node->tail = col_node;
-        return col_node;
-    }
-    else {
-        col_node->head = NULL;
-        col_node->tail = NULL;
-        list->tail->next = col_node;
-        list->tail = col_node;
-        return list;
-   }*/
 }
 
 insert_vals_node_t *sql_insert_vals_node_create(expr_node_t *expr_node, insert_vals_node_t *list, bool is_head)
@@ -1856,34 +1861,33 @@ void sql_sel_collect_qual(sel_rec_t *rec, expr_node_t *exprList, lgc_type_e lgcT
     if (!exprList)
         rec->isNoWhere = true;
     else {
-    if (exprList->type == EXPR_TYPE_COMPARISON) {
-        comparison_node_t *cmp = (comparison_node_t *)exprList->expr_info;
-        int idx = -1;
-        int idx2 = -1;
-        int varType = -1;
+        if (exprList->type == EXPR_TYPE_COMPARISON) {
+            comparison_node_t *cmp = (comparison_node_t *)exprList->expr_info;
+            int idx = -1;
+            int idx2 = -1;
+            int varType = -1;
         
-        if ((cmp->left->type == DATA_TYPE_PREFIX || cmp->left->type == DATA_TYPE_NAME) 
-          && (cmp->right->type == DATA_TYPE_PREFIX || cmp->right->type == DATA_TYPE_NAME)) {
-            idx = sql_find_table_index_in_rec(rec, cmp->left);
-            idx2 = sql_find_table_index_in_rec(rec, cmp->right);
-            sql_save_cmp_join_in_rec(rec, cmp, lgcType, idx, idx2);
-        } 
-        else if (cmp->left->type == DATA_TYPE_PREFIX || cmp->left->type == DATA_TYPE_NAME) {
-            idx = sql_find_table_index_in_rec(rec, cmp->left);
-            sql_save_cmp_for_tbl_in_rec(rec, cmp, lgcType, idx);
+            if ((cmp->left->type == DATA_TYPE_PREFIX || cmp->left->type == DATA_TYPE_NAME) 
+                && (cmp->right->type == DATA_TYPE_PREFIX || cmp->right->type == DATA_TYPE_NAME)) {
+                idx = sql_find_table_index_in_rec(rec, cmp->left);
+                idx2 = sql_find_table_index_in_rec(rec, cmp->right);
+                sql_save_cmp_join_in_rec(rec, cmp, lgcType, idx, idx2);
+            } 
+            else if (cmp->left->type == DATA_TYPE_PREFIX || cmp->left->type == DATA_TYPE_NAME) {
+                idx = sql_find_table_index_in_rec(rec, cmp->left);
+                sql_save_cmp_for_tbl_in_rec(rec, cmp, lgcType, idx);
+            }
+            else if (cmp->right->type == DATA_TYPE_PREFIX || cmp->right->type == DATA_TYPE_NAME) {
+                idx = sql_find_table_index_in_rec(rec, cmp->right);
+                sql_save_cmp_for_tbl_in_rec(rec, cmp, lgcType, idx);
+            }
         }
-        else if (cmp->right->type == DATA_TYPE_PREFIX || cmp->right->type == DATA_TYPE_NAME) {
-            idx = sql_find_table_index_in_rec(rec, cmp->right);
-            sql_save_cmp_for_tbl_in_rec(rec, cmp, lgcType, idx);
+        else if (exprList->type == EXPR_TYPE_LOGIC) {
+            logic_node_t *logic = (logic_node_t *)exprList->expr_info;
+            rec->lgcOp = logic->type;
+            sql_sel_collect_qual(rec, logic->left, lgcType);
+            sql_sel_collect_qual(rec, logic->right, logic->type);
         }
-    }
-    else if (exprList->type == EXPR_TYPE_LOGIC) {
-    
-        logic_node_t *logic = (logic_node_t *)exprList->expr_info;
-        rec->lgcOp = logic->type;
-        sql_sel_collect_qual(rec, logic->left, lgcType);
-        sql_sel_collect_qual(rec, logic->right, logic->type);
-    }
     }
 }
 
@@ -2628,8 +2632,9 @@ void sql_recover_table_info_tuple(table_node_t *tbl)
             tupleNum++;
         }
     }
-    if (tbl->find_attr(tbl, "userid") && strcmp(tbl->name, "user1")==0 )
-        sql_set_table_idx_tree(&db_tree, tbl, "userid");
+    //for test
+    //if (tbl->find_attr(tbl, "userid") && strcmp(tbl->name, "user1")==0 )
+    //    sql_set_table_idx_tree(&db_tree, tbl, "userid");
     assert(tupleNum == tbl->tuple_num);
 }
 
@@ -2660,10 +2665,12 @@ static void sql_recover_table_info(db_db_t *db)
         db__table_info_all_pages_read(tbl);
         sql_recover_table_info_tuple(tbl);
         //sql_print_table(tbl);
+        //for test
+        //sql_set_table_idx_tree(&db_tree, tbl, "userid");
     }
 
     // test
-    
+ /*   
     char *value;
     char key[64];
     sprintf(key, "%d", 20);
@@ -2679,6 +2686,7 @@ static void sql_recover_table_info(db_db_t *db)
     v1.int_value = 9989;
     v2.int_value = 9999;
     sql_idx_get_tuple_range(&db_tree, tbl, &v1, &v2, &tuple);
+*/
 }
 
 //int sql_idx_get_tuple_range(bp_db_t *db, table_node_t *tbl, var_node_t *start, var_node_t *end, tuple_t **tupleOut)
@@ -2692,30 +2700,51 @@ void sql_gen_key_string(attr_node_t *attr, char *key)
     }
 }
 
-int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, const char *attrName)
+int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, col_node_t *col_list)
 {
-    size_t size = strlen(tbl->name) + strlen(attrName) + strlen("tree") + 6; 
-    char *fileName = malloc(size);
-    char key[64];
+    char fileName[128];
+    char attrName[128]="";
+    char key[128]="";
+    char attrStr[64];
     char *value = malloc(64);
     tuple_t *tuple = tbl->tuple_list_head;
     attr_node_t *attr = NULL;
+    attr_node_header_t *attrHd = NULL;
+    col_node_t *col = col_list;
     int ret;
-    sprintf(fileName, "%s_%s_tree.bp", tbl->name, attrName);
+    while (col) {
+        attrHd = tbl->find_attr(tbl, (char *)col->name);
+        if (attrHd) {
+            strcat(attrName, col->name);
+        } else {
+            printf("fail to find all the ATTR In col_list\n");
+            return -1;
+        }
+        col = col->next;
+    }
+    sprintf(fileName, "%s_%s_tree.idx", tbl->name, attrName);
     ret = db__tree_idx_create(db, fileName);
+    db__tree_set_num_compare_cb(db);
     if (ret != BP_OK) return ret;
     while (tuple) {
-        attr = tuple->find_attr_vals(tuple, (char *)attrName);
-        if (attr) {
-            sql_gen_key_string(attr, key);
-            //address can be in-memory addr
-            sprintf(value, ",%d_%d", tuple->pageId, tuple->offset);        
-            printf("key = %s, value = %s\n", key, value);
-            ret = db__tree_idx_sets(db, key, &value);
-            if (ret != BP_OK)
-                printf("insert(idx) fails => \n\ttable:%s, attr:%s, value:%s\n",
-                        tbl->name, attrName, value);
+        col = col_list;
+        sprintf(value, ",%d_%d", tuple->pageId, tuple->offset);        
+        while (col) {
+            attr = tuple->find_attr_vals(tuple, (char *)col->name);
+            if (attr) {
+                sql_gen_key_string(attr, key);
+                strcat(key, attrStr);
+            } else {
+                strcat(key, "000");
+            }
+            col = col->next;
         }
+        //address can be in-memory addr
+        printf("key = %s, value = %s\n", key, value);
+        ret = db__tree_idx_sets(db, key, &value);
+        if (ret != BP_OK)
+            printf("insert(idx) fails => \n\ttable:%s, key:%s, value:%s\n",
+                        tbl->name, key, value);
         tuple = tuple->next;
     }
     return ret;
@@ -2884,6 +2913,7 @@ stmt_node_t *sql_sel_stmt_hdl(select_stmt_t *selStmt)
     rec.lgcOp = LGC_TYPE_INVALID;
     sql_sel_collect_qual(&rec, selStmt->select_qualifier, LGC_TYPE_INVALID);
     sql_sel_stmt_qual_tuple(&rec);
+    
     tuple_t *tupleHead = sql_sel_create_qual_tuple_for_output(rec.tupleNum);
     
     //tbl.add_tuple(&tbl, tupleHead);

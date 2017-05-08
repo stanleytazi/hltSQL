@@ -4,8 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <assert.h>
 #include "dbwriter.h"
 #include "page.h"
+#include "bplus.h"
 #define MAX_ATTR_NUM 20
 #define MAX_VARCHAR_LEN 9999
 #define MAX_TUPLE_ATTR_HASH_SIZE 32
@@ -40,6 +42,7 @@ typedef enum {
     STMT_TYPE_CREATE_TABLE,
     STMT_TYPE_INSERT_TUPLE,
     STMT_TYPE_SELECT_TUPLE,
+    STMT_TYPE_CREATE_INDEX,
     STMT_TYPE_SHOW_LOG,
     STMT_TYPE_IMPORT_FILE,
     STMT_TYPE_TEST_SEL
@@ -101,6 +104,10 @@ struct __TUPLE_NODE_S__{
     struct __TUPLE_NODE_S__ *prev;
 };
 
+typedef struct {
+    bp_db_t tree;
+    char *name;
+} bptree_t;
 struct __TABLE_NODE__ { 
     BP_WRITER_PRIVATE
     unsigned int attr_num;
@@ -112,7 +119,8 @@ struct __TABLE_NODE__ {
     attr_node_header_t *pkey_attr_tail;
     int16_t curr_page;
     db_page_t pageTable[MAX_PAGE_NUM_IN_TABLE];
-    
+    bptree_t btree[4];
+    uint8_t btree_num;
     bool (*set_attr)(table_node_t *self, attr_node_header_t *attr_node_hdr);
     attr_node_header_t *(*find_attr)(table_node_t *self, char *attrName);
     bool (*chk_col_list)(table_node_t *self, col_node_t *col_list);
@@ -364,7 +372,7 @@ stmt_node_t *sql_import_file(char *name, char *lastName);
 expr_node_t *sql_expr_aggregation_node_create(aggregation_type_e type, bool is_star, expr_node_t *expr_node);
 
 void sql_init(void);
-
+stmt_node_t *sql_stmt_act_init(void);
 
 /**** TEST FUNC ***/
 

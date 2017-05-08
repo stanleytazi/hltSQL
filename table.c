@@ -75,6 +75,9 @@ int db__table_info_read(table_node_t *tbl)
     ret = db__writer_read((bp__writer_t *)tbl, 0, &psize, (void **)&page);
     if (ret != BP_OK) return ret;
     
+    tbl->pageTable[0].page = page;
+    tbl->pageTable[0].valid_bit = 1;
+    
     pageType = ntohs(*(uint16_t *)page);
     assert(pageType == PAGE_TYPE_TBL_HEADER);
 
@@ -98,7 +101,7 @@ int db__table_info_read(table_node_t *tbl)
         o = o + 8 + sizeof(zeroPadding);
     }
 
-    free(page);
+    //free(page);
     return BP_OK;
 }
 
@@ -384,16 +387,7 @@ int db__table_info_all_pages_read(table_node_t *tbl)
 
     for (i = 1; i < pageNum; i++) {
         ret = db__table_info_page_fault_hdl(tbl, i, (char **)&page);
-        /*ret = db__table_info_page_read(tbl, i, (void **)&page);
-        if (ret != BP_OK) return ret;
-        tbl->pageTable[i].page = page;
-        tbl->pageTable[i].valid_bit = 1;*/
     }
     return BP_OK;
 }
 
-/*
-int db__dbms_info_table_read(db_db_t *db) 
-{
-    
-}*/
