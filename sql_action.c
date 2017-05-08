@@ -11,6 +11,8 @@
 #include "cret_idx.h"
 #define SELECT_LOG "select_log.txt"
 
+#include "select_destroy.h"
+
 
 #define MAX_STMT_NUM_SUPPORT 20
 #define MAX_IMPORT_FILE_NAME_LENGTH 100
@@ -1438,6 +1440,8 @@ select_table_node_t* sql_select_table_node_create(char *table_name, char *prefix
     
     if (alias_name)
         table_node->alias_name = strdup(alias_name);
+    else
+        table_node->alias_name = NULL;
 
     
     //Check whether it is prefix type or not.
@@ -1591,6 +1595,7 @@ bool sql_sel_collect_attr(sel_rec_t *rec, select_col_node_t* colList)
         if (firstTime){
             rec->attr_list = attr_node;
             alp = attr_node;
+            alp->next = NULL;
             firstTime = false;
         }
         else {
@@ -1790,6 +1795,8 @@ bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList)
             CALLOC_CHK(*mapTblHd);
             (*mapTblHd)->alias = selTable->alias_name;
             (*mapTblHd)->tableName = selTable->table_info->varchar_value;
+            (*mapTblHd)->alias = selTable->alias_name;
+            (*mapTblHd)->next = NULL;
             rec->table[i] = table;
             i++;
             mapTblHd = &((*mapTblHd)->next);
@@ -2567,6 +2574,7 @@ bool sql_select_stmt_handle(select_stmt_t *selStmt)
     sql_transl_to_tbl(&rec, &tbl);
     sql_print_table(&tbl);
     sql_select_vrt_table_free(&rec, &tbl);
+    sql_select_record_free(&rec);
     return true;   
 }
 
@@ -2899,6 +2907,7 @@ void sql_init()
     stmt_dstry[STMT_TYPE_CREATE_TABLE] = sql_cret_tbl_stmt_destroy;
     stmt_dstry[STMT_TYPE_INSERT_TUPLE] = sql_insr_tpl_stmt_destroy;
     stmt_dstry[STMT_TYPE_CREATE_INDEX] = sql_cret_idx_stmt_destroy;
+    stmt_dstry[STMT_TYPE_SELECT_TUPLE] = sql_select_stmt_destroy;
     // test table save
     //db__tree_idx_create(&db_tree, "bplus_idx.bp");
     db__dbms_info_create(&dbms, "DBSQL");
