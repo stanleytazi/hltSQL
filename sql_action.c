@@ -35,6 +35,11 @@ void printAttrList(sel_rec_t *rec);
 int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, col_node_t *col_list);
 int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, data_type_e dataType, int int_value, char *varchar_value, tuple_t **tupleOut);
 int sql_idx_get_tuple_range(bp_db_t *db, table_node_t *tbl, var_node_t *start, var_node_t *end, tuple_t **tupleOut);
+//0508
+int sql_hash_idx_get_tuple();
+int sql_hash_idx_get_tuple_range();
+int sql_set_table_idx_hash();
+//0508
 bool sql_create_idx_stmt_handle(cret_idx_stmt_t *cretIdxStmt);
 
 static inline char *sql_data_type_translate(data_type_e type)
@@ -861,6 +866,12 @@ bool sql_create_idx_stmt_handle(cret_idx_stmt_t *cretIdxStmt)
         if (ret != BP_OK) goto fatal;
         tbl->btree_num++;
     } else if (strstr(cretIdxStmt->idxName->name, "hash") != NULL) {
+        //0508
+        
+        
+        
+        
+        //0508
         //HL_TODO: create hash idx 
     } else {
         printf("Tree or Hash ?\n");
@@ -2763,6 +2774,17 @@ int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, col_node_t *col_list)
 // start < TARGET < end
 // if start = NULL, comp_type = less than
 
+//0508
+int sql_set_table_idx_hash(){
+    
+    
+    
+    
+    
+    return 0;
+}
+//0508
+
 int sql_idx_get_tuple_range(bp_db_t *db, table_node_t *tbl, var_node_t *start, var_node_t *end, tuple_t **tupleOut)
 {
     data_type_e dataType;
@@ -2905,6 +2927,17 @@ void sql_init()
     if (dbms.tbl_num)    
         sql_recover_table_info(&dbms);
 }
+
+//0508 sql_hash_idx_get_tuple
+int sql_hash_idx_get_tuple(){
+    return 0;
+}
+
+
+int sql_hash_idx_get_tuple_range(){
+    return 0;
+}
+//0508
 
 
 /**************TEST FUNCTION***************/
