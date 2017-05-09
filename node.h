@@ -195,6 +195,14 @@ typedef enum {
     CMP_TYPE_NOTEQUAL = 3
 }cmp_type_e;//0401
 
+typedef enum {
+    IDX_CB_TYPE_SCAN = 0,
+    IDX_CB_TYPE_LESS = 1,
+    IDX_CB_TYPE_GREATER = 2,
+    IDX_CB_TYPE_NOEQUAL = 3,
+    IDX_CB_TYPE_EQUAL = 4,
+} idx_cb_type_e;
+
 typedef struct __COMPARISON_S__{
     cmp_type_e type;
     var_node_t *left;
@@ -301,7 +309,12 @@ typedef struct __SEL_TARGET_ATTR__ sel_attr_t;
 typedef struct __SELECT_RECORD__ {
     table_node_t *table[MAX_SELECT_JOIN_TABLE];
     cmp_eval_rec_t cmpForTbl[MAX_SELECT_JOIN_TABLE];
+    int cmpTblNum[MAX_SELECT_JOIN_TABLE];
     cmp_eval_t  *cmpJoin;
+    uint8_t outerIdx;
+    uint8_t innerIdx;
+    tuple_t *outerTuple;
+    tuple_t *innerTuple;
     sel_attr_t  *attrList;
     tuple_cnn_t  *current;
     tuple_cnn_t  *currTail;
