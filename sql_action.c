@@ -3106,8 +3106,8 @@ static void sql_recover_table_info(db_db_t *db)
         db__table_info_read(tbl);
         sql_recover_table_info_pkey(tbl);
         sql_cret_tbl_add_table(tbl);
-        //db__table_info_all_pages_read(tbl);
-        //sql_recover_table_info_tuple(tbl);
+        db__table_info_all_pages_read(tbl);
+        sql_recover_table_info_tuple(tbl);
         //sql_print_table(tbl);
         //for test
     }
