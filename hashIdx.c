@@ -46,7 +46,7 @@ int db__hash_idx_sets(char *Idxname, char *key, int value){
 }
 
 
-int db__hash_idx_gets(const char *fileName, const char *key, unsigned int *value)
+int db__hash_idx_gets(const char *fileName, const char *key, unsigned int **value)
 {
     struct index *idx;
 	struct result *result;
@@ -54,23 +54,24 @@ int db__hash_idx_gets(const char *fileName, const char *key, unsigned int *value
 	int i;
 
 	idx = indexLoad(fileName);
-	if(idx == NULL)
-		return 0;
+	if(idx == NULL){
+	    printf("file not found:  %s \n", fileName);
+		return -1;
+	}
 
 	result = indexFind(idx, key,&num);
-	value = malloc(sizeof(unsigned int) * num*2);
+	*value = malloc(sizeof(unsigned int) * num*2);
 	if(result)
 	{
+	    printf("Find %d tuples\n", num);
 		for(i=0; i<num; i++)
 		{
-		    value[i*2] = result[i].d/10000;
-		    value[i*2 +1] = result[i].d%10000;
+		    (*value)[i*2] = result[i].d/10000;
+		    (*value)[i*2 +1] = result[i].d%10000;
+		    printf("tuple %d : %d-> (%d, %d) \n",i , result[i].d, (*value)[i*2], (*value)[i*2 +1]);
 		}
 		free(result);
 	}
-	getchar();
-	if(!indexDump(idx))	/* index dump */
-		return 0;
 	indexFree(idx);
 	return num*2;
 }

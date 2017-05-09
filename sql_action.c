@@ -2987,23 +2987,33 @@ void sql_init()
 //0508 sql_hash_idx_get_tuple
 int sql_hash_idx_get_tuple(table_node_t *table, char * attrName, var_node_t* hashKey, tuple_t **tupleOut)
 {
-    
     unsigned int *value;
-    char* fileName;
+    char fileName[128];
+    char key[128];
+    if (hashKey->type == DATA_TYPE_INT) {
+        sprintf(key, "%d", hashKey->int_value);
+    } else {
+        strcpy(key, hashKey->varchar_value);
+    }
+    
     char *page;
     uint16_t pageId, offset;
     int ret;
     tuple_t *tuple;
     table_node_t *tmpTbl = sql_cret_tbl_table_create_and_init("tmpInFunc");
-    
+    printf("%s_%s_hash.idx\n", table->name, attrName);
     sprintf(fileName, "%s_%s_hash.idx", table->name, attrName);
-    ret = db__hash_idx_gets(fileName, attrName, value);
-    if(ret == 0){
+    ret = db__hash_idx_gets(fileName, key, &value);
+    if(ret == -1){
         printf("Fail in hash idx get tuple\n");
         free(tmpTbl);
         return ret;
+    } else if (ret == 0) {
+        printf("No Tuple whih the value [ %s ] in the table [%s] : [%s]\n", key, table->name, attrName);
+        free(tmpTbl);
+        return ret;
     }
-    
+    else printf("Get hash tuple succed\n");
     int valueSize = ret;
     int i;
     for(i = 0; i < valueSize; i++){
@@ -3025,7 +3035,6 @@ int sql_hash_idx_get_tuple(table_node_t *table, char * attrName, var_node_t* has
         
     }
     *tupleOut = tmpTbl->tuple_list_head;
-
 fatal:
     free(value);
     free(tmpTbl); 
