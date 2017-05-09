@@ -22,12 +22,10 @@ int db__hash_idx_craete(char *name){
 }
 
 
-int db__hash_idx_sets(char *Idxname, char *key, int value){
-    struct index *hash_idx = NULL;
-    hash_idx = indexLoad(Idxname);
+int db__hash_idx_sets(struct index *hash_idx, char *key, int value){
     int ret;
     if(hash_idx==NULL){
-        printf("can't find the hash index : %s\n", Idxname);
+        printf("can't find the hash index in db__hash_idx_sets()\n");
         return -1;
     }
     else{
@@ -39,8 +37,6 @@ int db__hash_idx_sets(char *Idxname, char *key, int value){
             printf("insert to hash index succeed\n");
         }
     }
-    indexDump(hash_idx);
-    indexFree(hash_idx);//
     ret = EH_OK;
     return ret;
 }

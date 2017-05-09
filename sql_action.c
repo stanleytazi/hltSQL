@@ -2794,6 +2794,7 @@ int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list){
     char key[128]="";
     char attrStr[64];
     unsigned int value;// our hash value type is unsigned int
+    struct index *hash_idx = NULL;// hash index pointer
     tuple_t *tuple = tbl->tuple_list_head;
     attr_node_t *attr = NULL;
     attr_node_header_t *attrHd = NULL;
@@ -2811,7 +2812,7 @@ int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list){
     }
     sprintf(fileName, "%s_%s_hash.idx", tbl->name, attrName);
     ret = db__hash_idx_craete(fileName);// create hash index
-    
+    hash_idx = indexLoad(fileName);
     
     if (ret != EH_OK) return ret;
     while (tuple) {
@@ -2829,13 +2830,14 @@ int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list){
         }
         //address can be in-memory addr
         printf("key = %s, value = %d\n", key, value);
-        ret = db__hash_idx_sets(fileName, key, value);//hashIdx.c set function
+        ret = db__hash_idx_sets(hash_idx, key, value);//hashIdx.c set function
         if (ret != EH_OK)
             printf("insert to hash idx fails => \n\ttable:%s, key:%s, value:%d\n",
                         tbl->name, key, value);
         tuple = tuple->next;
     }
-    
+    indexDump(hash_idx);// write index data to disk
+    indexFree(hash_idx);// free hash index in mem
     
     return ret;
 }
