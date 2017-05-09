@@ -12,6 +12,7 @@
 #include "cret_idx.h"
 #define SELECT_LOG "select_log.txt"
 
+#include "select_destroy.h"
 
 #define MAX_STMT_NUM_SUPPORT 20
 #define MAX_IMPORT_FILE_NAME_LENGTH 100
@@ -1852,7 +1853,8 @@ select_table_node_t* sql_select_table_node_create(char *table_name, char *prefix
     
     if (alias_name)
         table_node->alias_name = strdup(alias_name);
-
+    else
+        table_node->alias_name = NULL;
     
     //Check whether it is prefix type or not.
     if (prefix) {
@@ -2005,6 +2007,7 @@ bool sql_sel_collect_attr(sel_rec_t *rec, select_col_node_t* colList)
         if (firstTime){
             rec->attr_list = attr_node;
             alp = attr_node;
+            alp->next = NULL;
             firstTime = false;
         }
         else {
@@ -2204,6 +2207,7 @@ bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList)
             CALLOC_CHK(*mapTblHd);
             (*mapTblHd)->alias = selTable->alias_name;
             (*mapTblHd)->tableName = selTable->table_info->varchar_value;
+            (*mapTblHd)->next = NULL;
             rec->table[i] = table;
             i++;
             mapTblHd = &((*mapTblHd)->next);
@@ -2995,6 +2999,7 @@ bool sql_select_stmt_handle(select_stmt_t *selStmt)
     sql_transl_to_tbl(&rec, &tbl);
     sql_print_table(&tbl);
     sql_select_vrt_table_free(&rec, &tbl);
+    sql_select_record_free(&rec);
     return true;   
 }
 
@@ -3213,7 +3218,7 @@ int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list){
         }
         col = col->next;
     }
-    sprintf(fileName, "%s_%s_hash.idx", tbl->name, attrName);
+    sprintf(fileName, "hashidx/%s_%s_hash.idx", tbl->name, attrName);
     ret = db__hash_idx_craete(fileName);// create hash index
     
     
@@ -3382,6 +3387,7 @@ void sql_init()
     stmt_dstry[STMT_TYPE_CREATE_TABLE] = sql_cret_tbl_stmt_destroy;
     stmt_dstry[STMT_TYPE_INSERT_TUPLE] = sql_insr_tpl_stmt_destroy;
     stmt_dstry[STMT_TYPE_CREATE_INDEX] = sql_cret_idx_stmt_destroy;
+    stmt_dstry[STMT_TYPE_SELECT_TUPLE] = sql_select_stmt_destroy;
     // test table save
     sql_index_cb[0] = sql_idx_full_scan_cb, //showul be scan
     sql_index_cb[1] = sql_idx_tree_cb, 
@@ -3414,8 +3420,7 @@ int sql_hash_idx_get_tuple(table_node_t *table, char * attrName, var_node_t* has
     int ret;
     tuple_t *tuple;
     table_node_t *tmpTbl = sql_cret_tbl_table_create_and_init("tmpInFunc");
-    printf("%s_%s_hash.idx\n", table->name, attrName);
-    sprintf(fileName, "%s_%s_hash.idx", table->name, attrName);
+    sprintf(fileName, "hashidx/%s_%s_hash.idx", table->name, attrName);
     ret = db__hash_idx_gets(fileName, key, &value);
     if(ret == -1){
         printf("Fail in hash idx get tuple\n");
