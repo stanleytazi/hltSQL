@@ -22,7 +22,7 @@ typedef struct bp_key_s bp_value_t;
 typedef int (*bp_compare_cb)(const bp_key_t *a, const bp_key_t *b);
 typedef int (*bp_update_cb)(void *arg,
                             const bp_value_t *previous,
-                            const bp_value_t *value);
+                            bp_value_t *value);
 typedef int (*bp_remove_cb)(void *arg,
                             const bp_value_t *value);
 typedef void (*bp_range_cb)(void *arg,

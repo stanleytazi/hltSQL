@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
+#include <limits.h>
 #include "node.h"
 #include "table.h"
 #include "treeIdx.h"
@@ -14,12 +15,16 @@
 #define MAX_IMPORT_FILE_NAME_LENGTH 100
 
 typedef bool (*sql_cmp_two_tuple)(tuple_t *new, tuple_t *exist, attr_node_header_t *attr);
+typedef int (*sql_idx_cb)(table_node_t *tbl, char *attrName, var_node_t *v, cmp_type_e cmptype, tuple_t *inTpl, tuple_t **outTpl);
 typedef void (*stmt_dstry_func)(stmt_node_t*);
 static table_node_t *table_list[MAX_TABLE_ENTRY] = { NULL };
 static db_db_t dbms;
-static bp_db_t db_tree;
-stmt_dstry_func *stmt_dstry;
+//static bp_db_t db_tree;
 
+stmt_dstry_func *stmt_dstry;
+static char intMAX[64];
+static char intMIN[64];
+sql_idx_cb sql_index_cb[5];
 
 bool sql_is_dup_tuple_chk(table_node_t *self, tuple_t *new_tuple);
 static tuple_t *sql_tuple_create_and_init(void);
@@ -31,9 +36,394 @@ char *sql_sel_find_tbl_name(sel_rec_t *rec, char *pfx);
 bool sql_sel_collect_attr(sel_rec_t *rec, select_col_node_t* colList);
 void printAttrList(sel_rec_t *rec);
 int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, col_node_t *col_list);
-int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, data_type_e dataType, int int_value, char *varchar_value, tuple_t **tupleOut);
+int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, var_node_t *v, tuple_t **tupleOut);
 int sql_idx_get_tuple_range(bp_db_t *db, table_node_t *tbl, var_node_t *start, var_node_t *end, tuple_t **tupleOut);
 bool sql_create_idx_stmt_handle(cret_idx_stmt_t *cretIdxStmt);
+int sql_sel_cond_handle(sel_rec_t *rec, table_node_t *tbl, tuple_t *inTpl, tuple_t **outTpl, cmp_eval_t *cmpEval);
+static table_node_t *sql_cret_tbl_table_create_and_init(char *name);
+cmp_eval_t *sql_get_cmp_from_table(sel_rec_t *rec, int idx);
+void sql_save_qual_tuple(sel_rec_t *rec, tuple_cnn_t *tplCnn);
+
+int sql_qual_tuple_list(char *attrName, var_node_t *cmp, cmp_type_e cmpType, tuple_t *inTpl, tuple_t **outTpl, tuple_t **tail)
+{
+    tuple_t *t_start = inTpl;
+    tuple_t *tupleToOut, *tailToOut;
+    tuple_t **tupleTmp = &tupleToOut;
+    bool result = false;
+
+    while (t_start) 
+    {
+        attr_node_t *attrNd = t_start->find_attr_vals(t_start, attrName);
+        result = false;
+        if (attrNd) 
+        {
+            if (attrNd->header->data_type == cmp->type) 
+            {
+                switch (cmpType) 
+                {
+                    case CMP_TYPE_LESS:
+                        if (cmp->type == DATA_TYPE_INT)
+                            result =  (attrNd->value->int_value < cmp->int_value);
+                        else
+                            printf("not allowed type for cmp operator: LESS\n");
+                        break;
+                    case CMP_TYPE_GREATER:
+                        if (cmp->type == DATA_TYPE_INT)
+                            result =  (attrNd->value->int_value > cmp->int_value);
+                        else
+                            printf("not allowed type for cmp operator: GREATER\n");
+                        break;
+                    case CMP_TYPE_EQUAL:
+                        if (cmp->type == DATA_TYPE_INT)
+                            result =  (attrNd->value->int_value == cmp->int_value);
+                        else if (cmp->type == DATA_TYPE_VARCHAR)
+                            result = (strcmp(attrNd->value->varchar_value, cmp->varchar_value) == 0);
+                        else
+                            printf("not allowed type for cmp operator: EQUAL\n");
+                        break;
+                    case CMP_TYPE_NOTEQUAL:
+                        if (cmp->type == DATA_TYPE_INT)
+                            result =  (attrNd->value->int_value != cmp->int_value);
+                        else if (cmp->type == DATA_TYPE_VARCHAR)
+                            result = (strcmp(attrNd->value->varchar_value, cmp->varchar_value) != 0);
+                        else
+                            printf("not allowed type for cmp operator: EQUAL\n");
+                        break;
+                    default:
+                        printf("unexpected cmp type\n");
+                    break;
+                }
+            }          
+        }
+        if (result) {
+            *tupleTmp = t_start;
+            tailToOut = t_start;
+            t_start = t_start->next;
+            tupleTmp = &((*tupleTmp)->next);
+            *tupleTmp = NULL;
+        } else {
+            t_start = t_start->next;
+        }
+    }
+    *outTpl = tupleToOut;
+    *tail = tailToOut;
+    return 0;
+}
+
+
+int sql_idx_full_scan_cb(table_node_t *tbl, char *attrName, var_node_t *cmp, cmp_type_e cmptype, tuple_t *inTpl, tuple_t **outTpl)
+{
+    tuple_t *t_start;
+    tuple_t *tupleToOut;
+    tuple_t **tupleTmp = &tupleToOut;
+    tuple_t *tail;
+    bool result = false;
+    if (inTpl) {
+        t_start = inTpl;
+        sql_qual_tuple_list(attrName, cmp, cmptype, t_start, outTpl, &tail);
+    }
+    else 
+    {
+        uint32_t tupleNum;
+        uint16_t offset, pageOffset, pageNum;
+        char *page; 
+        int i, ret;
+        tuple_t *headToOut, *tailToOut, *out_tuple;
+        tuple_t *tuple, *tuplelist;
+        tuple_t **tupleTmp = &tuplelist;
+        pageNum = ntohl(*(uint32_t *)(tbl->pageTable[0].page + DB_PAGE_HEADER_SIZE));
+        tupleNum = 0;
+        for (i = 1; i < pageNum; i++) 
+        {
+            offset = DB_PAGE_HEADER_SIZE;
+            if (tbl->pageTable[i].valid_bit == 0 )
+            {
+                ret = db__table_info_page_fault_hdl(tbl, i, (char **)&page);
+                if (ret!=BP_OK)
+                    printf("error\n");
+                else 
+                    tbl->pageTable[i].page = page;
+            } else {
+                page = tbl->pageTable[i].page;    
+            }
+            pageOffset = *(uint16_t *)(page + DB_PAGE_HEADER_OFFSET_OFFSET);
+            while (offset < pageOffset) {
+                tuple = sql_tuple_create_and_init();
+                tuple->pageId = i;
+                tuple->offset = offset;
+                printf("(%d, %d)\n", i, offset);
+                db__page_tuple_info_unpacked(tbl, tuple, &offset, page);
+                //tbl->add_tuple(tbl, tuple);
+                *tupleTmp = tuple;
+                tupleTmp = &((*tupleTmp)->next);
+                tupleNum++;
+            }
+            /*
+            if (!headToOut){
+                headToOut = out_tuple; 
+            } else {
+                tailToOut->next = out_tuple;    
+            }*/
+            //tupleTmp = &tuplelist;
+            //tailToOut = tail;
+        }
+        sql_qual_tuple_list(attrName, cmp, cmptype, tuplelist, &out_tuple, &tail);
+        *outTpl = out_tuple;
+    }
+    return 0;   
+}
+
+int sql_idx_tree_cb(table_node_t *tbl, char *attrName, var_node_t *v, cmp_type_e cmpType, tuple_t *inTpl, tuple_t **outTpl)
+{
+    char fileName[128];
+    sprintf(fileName, "%s_%s_tree.idx", tbl->name, attrName);
+    bp_db_t db_tree;
+    var_node_t _interVar;
+    int ret;
+    ret = db__tree_idx_create(&db_tree, fileName);
+    db__tree_set_num_compare_cb(&db_tree);
+    
+    if (ret != BP_OK) {
+        printf("can not get tree idx\n");
+        return ret;
+    }
+    _interVar.type = v->type;
+    if ( v->type == DATA_TYPE_INT ) {
+        if (cmpType == CMP_TYPE_GREATER) {
+            _interVar.int_value = INT_MAX;
+            v->int_value++;
+            sql_idx_get_tuple_range(&db_tree, tbl, v, &_interVar, outTpl);
+        }
+        else { 
+            _interVar.int_value = INT_MIN;
+            v->int_value--;
+            sql_idx_get_tuple_range(&db_tree, tbl, &_interVar, v, outTpl);
+        
+        }
+    }
+    //TODO:else v->type = DATA_TYPE_VARCHAR;
+    return 0;
+}
+
+int sql_sel_merge_tuple_for_or_cond(sel_rec_t *rec, table_node_t *tbl, tuple_t *list1, tuple_t *list2, tuple_t **tupleOut)
+{
+    tuple_t *tupleBackup = tbl->tuple_list_head;
+    tuple_t *t2 = list2;
+    table_node_t *tmpTbl = sql_cret_tbl_table_create_and_init("tmp");
+    tbl->tuple_list_head = list1;
+    
+    while (t2) {
+        if (!tbl->chk_duplc(tbl, t2)) // no duplicated
+            tmpTbl->add_tuple(tmpTbl,t2);
+        t2 = t2->next;
+    }
+    if ( tmpTbl->tuple_list_head) {
+        tmpTbl->tuple_list_tail->next = list1;
+        *tupleOut = tmpTbl->tuple_list_head;
+    } else {
+        *tupleOut = list1;
+    }
+    tbl->tuple_list_head = tupleBackup;
+    free(tmpTbl);
+    return 0;
+}
+
+int sql_sel_merge_tuple_for_and_cond(sel_rec_t *rec, table_node_t *tbl, tuple_t *list1, tuple_t *list2, tuple_t **tupleOut)
+{
+    tuple_t *tupleBackup = tbl->tuple_list_head;
+    tuple_t *t2 = list2;
+    table_node_t *tmpTbl = sql_cret_tbl_table_create_and_init("tmp");
+    tbl->tuple_list_head = list1;
+    
+    while (t2) {
+        if (tbl->chk_duplc(tbl, t2)) // no duplicated
+            tmpTbl->add_tuple(tmpTbl,t2);
+        t2 = t2->next;
+    }
+    *tupleOut = tmpTbl->tuple_list_head;
+
+    tbl->tuple_list_head = tupleBackup;
+    free(tmpTbl);
+    return 0;
+}
+
+int sql_sel_table_qual_tuple(sel_rec_t *rec, table_node_t *tbl, int tblIdx, tuple_t **tupleOut)
+{
+    int condNum = rec->cmpTblNum[tblIdx];
+    tuple_t *tupleToOut = NULL;
+    cmp_eval_t *cmpEval = sql_get_cmp_from_table(rec, tblIdx);
+    
+    if (condNum == 2) 
+    {
+        // cmpTblNum[0] =2 || cmpTblNum[1] = 2 =>  pack tupleCnn directly
+        tuple_t *list1, *list2;
+        if (rec->lgcOp == LGC_TYPE_OR) {
+            sql_sel_cond_handle(rec, tbl, NULL, &list1, cmpEval);
+            sql_sel_cond_handle(rec, tbl, NULL, &list2, cmpEval->next);
+            sql_sel_merge_tuple_for_or_cond(rec, tbl, list1, list2, &tupleToOut);// rec for count 
+        }
+        else if (rec->lgcOp == LGC_TYPE_AND) {
+            bool isScan;
+            sql_sel_cond_handle(rec, tbl, NULL, &list1, cmpEval);
+            sql_sel_cond_handle(rec, tbl, list1, &list2, cmpEval->next);
+            tupleToOut = list2;
+        }
+    
+    } 
+    else if (condNum == 1) 
+    {
+        tuple_t *list;
+        sql_sel_cond_handle(rec, tbl, NULL, &list, cmpEval);
+        tupleToOut = list;
+        if (rec->cmpJoin) {
+            rec->outerIdx = tblIdx;
+            rec->outerTuple = tupleToOut;
+        }
+    } 
+    else if (condNum == 0) 
+    {
+        if (tbl) tupleToOut = tbl->tuple_list_head;
+    } 
+    else 
+    {
+        printf("condNum is not correct\n");
+    }
+    *tupleOut = tupleToOut;
+    return 0;
+}
+
+
+int sql_sel_cond_handle(sel_rec_t *rec, table_node_t *tbl, tuple_t *inTpl, tuple_t **outTpl, cmp_eval_t *cmpEval)
+{
+    char *attrName; 
+    var_node_t *v;
+    cmp_type_e cmpType;
+    idx_cb_type_e cbType;
+    attr_node_header_t *attrHd;
+    attrName = cmpEval->cmp->left->varchar_value;
+    attrHd = tbl->find_attr(tbl, attrName);
+    v = cmpEval->cmp->right;
+    if (inTpl || (attrHd->col_attr&ATTR_PRIKEY) == 0)
+    {
+        cbType = IDX_CB_TYPE_SCAN;
+    }
+    else
+    {
+        cbType = (idx_cb_type_e)cmpEval->cmp->type;
+    }
+    sql_index_cb[cbType](tbl, attrName, v, cmpEval->cmp->type, inTpl, outTpl);
+    
+    return BP_OK;
+}
+
+int sql_sel_qual_start(sel_rec_t *rec)
+{
+    tuple_t *t_list1 = NULL; 
+    tuple_t *t_list2 = NULL;
+    tuple_t *t_otr = NULL;
+    tuple_t *t_inr = NULL;
+    uint16_t otrIdx = 0, inrIdx = 1;
+    sql_sel_table_qual_tuple(rec, rec->table[0], 0, &t_list1);
+    t_otr = t_list1;
+    if (rec->table[1]) {
+        sql_sel_table_qual_tuple(rec, rec->table[1], 1, &t_list2);
+        t_inr = t_list2;
+        if (rec->outerTuple) {
+            if (rec->outerIdx == 1) {
+                t_otr = t_list2;
+                t_inr = t_list1;
+                otrIdx = 1;
+                inrIdx = 0;
+            }
+        }
+    }
+    // join (must AND)
+    if (rec->cmpJoin) {
+        var_node_t var_otr;
+        var_node_t *cmp_otr;
+        attr_node_t *attr_otr;
+        tuple_cnn_t *tplCnn = NULL, *tplCnnInr = NULL;
+        tuple_cnn_t **tplCnnTmp = &tplCnnInr;
+        char *attrName;
+        if (rec->outerIdx == rec->cmpJoin->cmpL_tblIdx) {
+            attrName = rec->cmpJoin->cmp->right->varchar_value;
+            cmp_otr = rec->cmpJoin->cmp->left;
+        } else {
+            attrName = rec->cmpJoin->cmp->left->varchar_value;
+            cmp_otr = rec->cmpJoin->cmp->right;
+        }
+        while (t_otr) {
+            int nextQualNum = 0;
+            attr_otr = t_otr->find_attr_vals(t_otr, cmp_otr->varchar_value);
+            if (attr_otr) {
+                var_otr.type = attr_otr->header->data_type;  
+                var_otr.int_value = attr_otr->value->int_value;
+                var_otr.varchar_value = attr_otr->value->varchar_value;
+                sql_index_cb[IDX_CB_TYPE_EQUAL](rec->table[inrIdx], attrName, &var_otr, 0, NULL, &t_inr);
+                if (t_inr) {
+                    tuple_cnn_t *tail;
+                    tplCnn = CALLOC_MEM(tuple_cnn_t, 1);
+                    CALLOC_CHK(tplCnn);
+                    nextQualNum = 0;
+                    tplCnn->table = rec->table[otrIdx];
+                    tplCnn->tuple = t_otr;
+                    while (t_inr) {
+                        *tplCnnTmp = CALLOC_MEM(tuple_cnn_t, 1);
+                        CALLOC_CHK(*tplCnnTmp);
+                        nextQualNum++;
+                        tail = *tplCnnTmp;
+                        (*tplCnnTmp)->table = rec->table[inrIdx];
+                        (*tplCnnTmp)->tuple = t_inr;
+                        tplCnnTmp = &((*tplCnnTmp)->siblNext);
+                        t_inr = t_inr->next;
+                    }
+                    tplCnn->nextQualNum = nextQualNum;
+                    tplCnn->nextRel = tplCnnInr;
+                    tplCnn->siblHead = tplCnnInr;
+                    tplCnn->siblTail = tail;
+                    if (tplCnnInr)
+                        tplCnnInr->prevRel = tplCnn;
+                    sql_save_qual_tuple(rec, tplCnn);
+                } 
+            }
+            t_otr = t_otr->next;
+        }
+    
+    } else {
+        // all condition in one table
+        // one condition for each table
+        tuple_cnn_t *tplCnn = NULL, *tplCnnInr = NULL;
+        tuple_cnn_t **tplCnnTmp = &tplCnnInr;
+        int nextQualNum = 0;
+        while (t_otr) {
+            tuple_cnn_t *tail;
+            tplCnn = CALLOC_MEM(tuple_cnn_t, 1);
+            CALLOC_CHK(tplCnn);
+            nextQualNum = 0;
+            tplCnn->table = rec->table[otrIdx];
+            tplCnn->tuple = t_otr;
+            while (t_inr) {
+                *tplCnnTmp = CALLOC_MEM(tuple_cnn_t, 1);
+                CALLOC_CHK(*tplCnnTmp);
+                nextQualNum++;
+                tail = *tplCnnTmp;
+                (*tplCnnTmp)->table = rec->table[inrIdx];
+                (*tplCnnTmp)->tuple = t_inr;
+                tplCnnTmp = &((*tplCnnTmp)->siblNext);
+                t_inr = t_inr->next;
+            }
+            tplCnn->nextQualNum = nextQualNum;
+            tplCnn->nextRel = tplCnnInr;
+            tplCnn->siblHead = tplCnnInr;
+            tplCnn->siblTail = tail;
+            if (tplCnnInr)
+                tplCnnInr->prevRel = tplCnn;
+            sql_save_qual_tuple(rec, tplCnn);
+            t_otr = t_otr->next;
+        }
+    }
+    return 0;
+}
 
 static inline char *sql_data_type_translate(data_type_e type)
 {
@@ -963,7 +1353,7 @@ attr_node_header_t  *sql_create_attr(char *name, int data_type, uint16_t col_att
     
     newNd->col_attr = col_attr;
 #if 0
-    switch (col_attr)
+    switch (c || attrHd->col_attrol_attr)
     {
         case COL_ATTR_PRIKEY:
             newNd->is_PRIKEY = true;
@@ -1808,13 +2198,11 @@ char *sql_transl_alias(char *alias)
 }
 int sql_find_table_index_in_rec(sel_rec_t *rec, var_node_t *var)
 {
-        //table_node_t *table[MAX_SELECT_JOIN_TABLE];
         int i = 0;
         int matchNum = 0;
         int matchIdx = -1;
         char *tableName = NULL;
         if (var->type == DATA_TYPE_PREFIX) {
-            //tableName = sql_transl_alias(var->prefix_value);
             tableName = sql_sel_find_tbl_name(rec, var->prefix_value);
         }   
         for (i = 0; i < MAX_SELECT_JOIN_TABLE; i++)
@@ -1844,6 +2232,7 @@ int sql_find_table_index_in_rec(sel_rec_t *rec, var_node_t *var)
      CALLOC_CHK(cmpEval);
      cmpEval->type = lgcType;
      cmpEval->cmp  = cmp;
+     rec->cmpTblNum[idx]++;
      if (!rec->cmpForTbl[idx].head) {
         rec->cmpForTbl[idx].head = cmpEval;
         rec->cmpForTbl[idx].tail = cmpEval;
@@ -1913,6 +2302,20 @@ cmp_eval_t *sql_get_cmp_from_table(sel_rec_t *rec, int idx)
     if(idx >= 0)
         cmpE = rec->cmpForTbl[idx].head;
     return cmpE;
+}
+
+var_node_t *sql_get_var_from_eval(cmp_eval_t *cmpEval)
+{
+    comparison_node_t *cmp = cmpEval->cmp;
+    var_node_t *cmpR = cmp->right;
+    return cmpR;
+}
+
+char *sql_get_attr_from_eval(cmp_eval_t *cmpEval)
+{
+    comparison_node_t *cmp = cmpEval->cmp;
+    var_node_t *cmpL = cmp->left;
+    return cmpL->varchar_value; 
 }
 
 bool sql_sel_qualifier(sel_rec_t *rec, cmp_eval_t *cmpEval, tuple_t *tuple)
@@ -2552,14 +2955,15 @@ bool sql_select_stmt_handle(select_stmt_t *selStmt)
     sql_sel_collect_table(&rec, selStmt->select_table_list);
     if( sql_select_errchk(&rec, selStmt) ) {
         printf("Select statement error\n");
-        return false; 
+        return true; 
     }
     else {
         printf("Start select:\n");
     }
     sql_sel_collect_attr(&rec, selStmt->select_col_list);
     sql_sel_collect_qual(&rec, selStmt->select_qualifier, LGC_TYPE_INVALID);
-    sql_sel_stmt_qual_tuple(&rec);
+    sql_sel_qual_start(&rec);
+    //sql_sel_stmt_qual_tuple(&rec);
     tuple_t *tupleHead = sql_sel_create_qual_tuple_for_output(rec.tupleNum);
     tbl.tuple_list_head = tupleHead;
     sql_transl_to_tbl(&rec, &tbl);
@@ -2663,19 +3067,17 @@ static void sql_recover_table_info(db_db_t *db)
     table_node_t *tbl;
     int i;
 
-    //for (i = 0; i < db->tbl_num; i++) {
-    for (i = 0; i < 1; i++) {
+    for (i = 0; i < db->tbl_num; i++) {
         tblName = strdup(db->tbl[i].name);
         tbl = sql_cret_tbl_table_create_and_init(tblName);
         db__table_info_create(tbl);
         db__table_info_read(tbl);
         sql_recover_table_info_pkey(tbl);
         sql_cret_tbl_add_table(tbl);
-        db__table_info_all_pages_read(tbl);
-        sql_recover_table_info_tuple(tbl);
+        //db__table_info_all_pages_read(tbl);
+        //sql_recover_table_info_tuple(tbl);
         //sql_print_table(tbl);
         //for test
-        //sql_set_table_idx_tree(&db_tree, tbl, "userid");
     }
 
     // test
@@ -2733,7 +3135,8 @@ int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, col_node_t *col_list)
     }
     sprintf(fileName, "%s_%s_tree.idx", tbl->name, attrName);
     ret = db__tree_idx_create(db, fileName);
-    db__tree_set_num_compare_cb(db);
+    if (attrHd->data_type == DATA_TYPE_INT)
+        db__tree_set_num_compare_cb(db);
     if (ret != BP_OK) return ret;
     while (tuple) {
         col = col_list;
@@ -2837,7 +3240,7 @@ fatal:
 }
 
 
-int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, data_type_e dataType, int int_value, char *varchar_value, tuple_t **tupleOut)
+int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, var_node_t *v, tuple_t **tupleOut)
 {
     char *value;
     char *delim = ",";
@@ -2847,13 +3250,14 @@ int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, data_type_e dataType, int 
     int ret;
     tuple_t *tuple;
     table_node_t *tmpTbl = sql_cret_tbl_table_create_and_init("tmpInFunc");
+    data_type_e dataType = v->type;
 
     if (dataType == DATA_TYPE_INT) {
         char key[64];
-        sprintf(key,"%d", int_value);
+        sprintf(key,"%d", v->int_value);
         ret = db__tree_idx_gets(db, key, &value);
     } else {
-        ret = db__tree_idx_gets(db, varchar_value, &value);
+        ret = db__tree_idx_gets(db, v->varchar_value, &value);
     }
     if (ret != BP_OK) {
         printf("fail in idx get tuple\n");
@@ -2898,7 +3302,15 @@ void sql_init()
     stmt_dstry[STMT_TYPE_INSERT_TUPLE] = sql_insr_tpl_stmt_destroy;
     stmt_dstry[STMT_TYPE_CREATE_INDEX] = sql_cret_idx_stmt_destroy;
     // test table save
-    //db__tree_idx_create(&db_tree, "bplus_idx.bp");
+    sql_index_cb[0] = sql_idx_full_scan_cb, //showul be scan
+    sql_index_cb[1] = sql_idx_tree_cb, 
+    sql_index_cb[2] = sql_idx_tree_cb, 
+    sql_index_cb[3] = sql_idx_tree_cb, 
+    sql_index_cb[4] = sql_idx_tree_cb,//should be hash 
+    
+    sprintf(intMAX, "%d", INT_MAX);
+    sprintf(intMIN, "%d", INT_MIN);
+
     db__dbms_info_create(&dbms, "DBSQL");
     if (dbms.tbl_num)    
         sql_recover_table_info(&dbms);
