@@ -1018,7 +1018,7 @@ int main(int ac, char **av)
   fprintf(output, "log start...\n");
   fclose(output);
 #endif
-  sql_init();
+  sql_init(); //load tables from disk to mem
   int i =0;
   if(ac > 1 && !strcmp(av[1], "-d")) {
     yydebug = 1; ac--; av++;

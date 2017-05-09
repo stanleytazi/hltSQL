@@ -7,6 +7,8 @@
 #include "node.h"
 #include "table.h"
 #include "treeIdx.h"
+#include "hashIdx.h"
+//0508
 #include "cret_idx.h"
 #define SELECT_LOG "select_log.txt"
 
@@ -38,6 +40,10 @@ void printAttrList(sel_rec_t *rec);
 int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, col_node_t *col_list);
 int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, var_node_t *v, tuple_t **tupleOut);
 int sql_idx_get_tuple_range(bp_db_t *db, table_node_t *tbl, var_node_t *start, var_node_t *end, tuple_t **tupleOut);
+//0508
+int sql_hash_idx_get_tuple(table_node_t *table, char * attrName, var_node_t* hashKey, tuple_t **tupleOut);
+int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list);
+//0508
 bool sql_create_idx_stmt_handle(cret_idx_stmt_t *cretIdxStmt);
 int sql_sel_cond_handle(sel_rec_t *rec, table_node_t *tbl, tuple_t *inTpl, tuple_t **outTpl, cmp_eval_t *cmpEval);
 static table_node_t *sql_cret_tbl_table_create_and_init(char *name);
@@ -1249,6 +1255,11 @@ bool sql_create_idx_stmt_handle(cret_idx_stmt_t *cretIdxStmt)
         if (ret != BP_OK) goto fatal;
         tbl->btree_num++;
     } else if (strstr(cretIdxStmt->idxName->name, "hash") != NULL) {
+        //0508
+        ret = sql_set_table_idx_hash(tbl, cretIdxStmt->col_list);
+        if(ret!=EH_OK) goto fatal;
+        //tbl->hash_num++;// not yet add this var to table struct
+        //0508
         //HL_TODO: create hash idx 
     } else {
         printf("Tree or Hash ?\n");
@@ -1582,6 +1593,8 @@ void sql_output_insert_result_to_file(insert_stmt_t *insr_stmt)
 stmt_node_t *sql_show_all_table(void)
 {
     int i = 0;
+    int j = 0;//0509
+    col_node_t col_node;//0509
     table_node_t *table = NULL;
     stmt_node_t *stmt = NULL;
     for (i = 0; i < MAX_TABLE_ENTRY; i++) {
@@ -1594,6 +1607,19 @@ stmt_node_t *sql_show_all_table(void)
             }
             db__table_info_update(table);
             db__table_info_all_pages_write(table);
+            ///////// initialize hash index
+            for(j=0; j<table->attr_num; j++){
+                col_node.name = table->attr[j]->name;
+                if(sql_set_table_idx_hash(table, &col_node)==EH_OK){
+                    printf("create and insert to hash index: %s_%s_hash.idx: succeed\n", table->name, col_node.name);
+                }
+                else{
+                    printf("create and insert to hash index: %s_%s_hash.idx:failed\n", table->name, col_node.name);
+                }
+            }
+            
+            
+            /////////0509
             table = table->next;
             printf("\n");
             
@@ -3067,6 +3093,7 @@ static void sql_recover_table_info(db_db_t *db)
     table_node_t *tbl;
     int i;
 
+
     for (i = 0; i < db->tbl_num; i++) {
         tblName = strdup(db->tbl[i].name);
         tbl = sql_cret_tbl_table_create_and_init(tblName);
@@ -3163,6 +3190,60 @@ int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, col_node_t *col_list)
 }
 // start < TARGET < end
 // if start = NULL, comp_type = less than
+
+//0508
+int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list){
+    char fileName[128];
+    char attrName[128]="";
+    char key[128]="";
+    char attrStr[64];
+    unsigned int value;// our hash value type is unsigned int
+    tuple_t *tuple = tbl->tuple_list_head;
+    attr_node_t *attr = NULL;
+    attr_node_header_t *attrHd = NULL;
+    col_node_t *col = col_list;
+    int ret;
+    while (col) {
+        attrHd = tbl->find_attr(tbl, (char *)col->name);
+        if (attrHd) {
+            strcat(attrName, col->name);
+        } else {
+            printf("fail to find all the ATTR In col_list\n");
+            return -1;
+        }
+        col = col->next;
+    }
+    sprintf(fileName, "%s_%s_hash.idx", tbl->name, attrName);
+    ret = db__hash_idx_craete(fileName);// create hash index
+    
+    
+    if (ret != EH_OK) return ret;
+    while (tuple) {
+        col = col_list;
+        value = tuple->pageId*10000+tuple->offset;// value format = pageId*10000+offset
+        while (col) {
+            attr = tuple->find_attr_vals(tuple, (char *)col->name);
+            if (attr) {
+                sql_gen_key_string(attr, key);
+                //strcat(key, attrStr);//??
+            } else {
+                strcat(key, "000");
+            }
+            col = col->next;
+        }
+        //address can be in-memory addr
+        printf("key = %s, value = %d\n", key, value);
+        ret = db__hash_idx_sets(fileName, key, value);//hashIdx.c set function
+        if (ret != EH_OK)
+            printf("insert to hash idx fails => \n\ttable:%s, key:%s, value:%d\n",
+                        tbl->name, key, value);
+        tuple = tuple->next;
+    }
+    
+    
+    return ret;
+}
+//0508
 
 int sql_idx_get_tuple_range(bp_db_t *db, table_node_t *tbl, var_node_t *start, var_node_t *end, tuple_t **tupleOut)
 {
@@ -3315,6 +3396,66 @@ void sql_init()
     if (dbms.tbl_num)    
         sql_recover_table_info(&dbms);
 }
+
+//0508 sql_hash_idx_get_tuple
+int sql_hash_idx_get_tuple(table_node_t *table, char * attrName, var_node_t* hashKey, tuple_t **tupleOut)
+{
+    unsigned int *value;
+    char fileName[128];
+    char key[128];
+    if (hashKey->type == DATA_TYPE_INT) {
+        sprintf(key, "%d", hashKey->int_value);
+    } else {
+        strcpy(key, hashKey->varchar_value);
+    }
+    
+    char *page;
+    uint16_t pageId, offset;
+    int ret;
+    tuple_t *tuple;
+    table_node_t *tmpTbl = sql_cret_tbl_table_create_and_init("tmpInFunc");
+    printf("%s_%s_hash.idx\n", table->name, attrName);
+    sprintf(fileName, "%s_%s_hash.idx", table->name, attrName);
+    ret = db__hash_idx_gets(fileName, key, &value);
+    if(ret == -1){
+        printf("Fail in hash idx get tuple\n");
+        free(tmpTbl);
+        return ret;
+    } else if (ret == 0) {
+        printf("No Tuple whih the value [ %s ] in the table [%s] : [%s]\n", key, table->name, attrName);
+        free(tmpTbl);
+        return ret;
+    }
+    else printf("Get hash tuple succed\n");
+    int valueSize = ret;
+    int i;
+    for(i = 0; i < valueSize; i++){
+        pageId = value[i];
+        i++;
+        offset = value[i];
+        
+        if (table->pageTable[pageId].valid_bit == 0) {
+            ret = db__table_info_page_fault_hdl(table, pageId, (char **)&page);
+            if (ret != BP_OK) goto fatal;
+        } else {
+            page = table->pageTable[pageId].page;
+        }
+        tuple = sql_tuple_create_and_init();
+        tuple->pageId = pageId;
+        tuple->offset = offset;
+        db__page_tuple_info_unpacked(table, tuple, &offset, page);
+        tmpTbl->add_tuple(tmpTbl, tuple);
+        
+    }
+    *tupleOut = tmpTbl->tuple_list_head;
+fatal:
+    free(value);
+    free(tmpTbl); 
+    return ret;
+}
+
+
+//0508
 
 
 /**************TEST FUNCTION***************/
