@@ -1598,6 +1598,7 @@ stmt_node_t *sql_show_all_table(void)
     col_node_t col_node;//0509
     table_node_t *table = NULL;
     stmt_node_t *stmt = NULL;
+    memset(&col_node, 0, sizeof(col_node_t));
     for (i = 0; i < MAX_TABLE_ENTRY; i++) {
         table = table_list[i];
         while (table) {
@@ -3210,7 +3211,7 @@ int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list){
     col_node_t *col = col_list;
     int ret;
     while (col) {
-        attrHd = tbl->find_attr(tbl, (char *)col->name);
+        attrHd = tbl->find_attr(tbl, col->name);
         if (attrHd) {
             strcat(attrName, col->name);
         } else {
@@ -3219,7 +3220,7 @@ int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list){
         }
         col = col->next;
     }
-    sprintf(fileName, "hashidx/%s_%s_hash.idx", tbl->name, attrName);
+    sprintf(fileName, "%s_%s_hash.idx", tbl->name, attrName);
     ret = db__hash_idx_craete(fileName);// create hash index
     hash_idx = indexLoad(fileName);
     
@@ -3422,7 +3423,7 @@ int sql_hash_idx_get_tuple(table_node_t *table, char * attrName, var_node_t* has
     int ret;
     tuple_t *tuple;
     table_node_t *tmpTbl = sql_cret_tbl_table_create_and_init("tmpInFunc");
-    sprintf(fileName, "hashidx/%s_%s_hash.idx", table->name, attrName);
+    sprintf(fileName, "%s_%s_hash.idx", table->name, attrName);
     ret = db__hash_idx_gets(fileName, key, &value);
     if(ret == -1){
         printf("Fail in hash idx get tuple\n");
