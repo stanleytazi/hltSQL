@@ -40,6 +40,31 @@ int db__hash_idx_sets(char *Idxname, char *key, int value){
 }
 
 
-int db__hash_idx_gets(){
-    
+int db__hash_idx_gets(const char *fileName, const char *key, unsigned int *value)
+{
+    struct index *idx;
+	struct result *result;
+	unsigned int num;
+	int i;
+
+	idx = indexLoad(fileName);
+	if(idx == NULL)
+		return 0;
+
+	result = indexFind(idx, key,&num);
+	value = malloc(sizeof(unsigned int) * num*2);
+	if(result)
+	{
+		for(i=0; i<num; i++)
+		{
+		    value[i*2] = result[i].d/10000;
+		    value[i*2 +1] = result[i].d%10000;
+		}
+		free(result);
+	}
+	getchar();
+	if(!indexDump(idx))	/* index dump */
+		return 0;
+	indexFree(idx);
+	return num*2;
 }

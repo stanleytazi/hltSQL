@@ -6,8 +6,7 @@
 
 int db__hash_idx_craete(char *name);
 int db__hash_idx_sets(char *Idxname, char *key, int value);
-int db__hash_idx_gets();
-
+int db__hash_idx_gets(const char *fileName, const char *key, unsigned int *value);
 
 
 

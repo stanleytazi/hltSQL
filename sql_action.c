@@ -36,7 +36,7 @@ int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, col_node_t *col_list)
 int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, data_type_e dataType, int int_value, char *varchar_value, tuple_t **tupleOut);
 int sql_idx_get_tuple_range(bp_db_t *db, table_node_t *tbl, var_node_t *start, var_node_t *end, tuple_t **tupleOut);
 //0508
-int sql_hash_idx_get_tuple();
+int sql_hash_idx_get_tuple(table_node_t *table, char * attrName, var_node_t* hashKey, tuple_t **tupleOut);
 int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list);
 //0508
 bool sql_create_idx_stmt_handle(cret_idx_stmt_t *cretIdxStmt);
@@ -866,10 +866,9 @@ bool sql_create_idx_stmt_handle(cret_idx_stmt_t *cretIdxStmt)
         tbl->btree_num++;
     } else if (strstr(cretIdxStmt->idxName->name, "hash") != NULL) {
         //0508
-        
-        
-        
-        
+        ret = sql_set_table_idx_hash(tbl, cretIdxStmt->col_list);
+        if(ret!=EH_OK) goto fatal;
+        //tbl->hash_num++;// not yet add this var to table struct
         //0508
         //HL_TODO: create hash idx 
     } else {
@@ -2968,8 +2967,51 @@ void sql_init()
 }
 
 //0508 sql_hash_idx_get_tuple
-int sql_hash_idx_get_tuple(){
-    return 0;
+int sql_hash_idx_get_tuple(table_node_t *table, char * attrName, var_node_t* hashKey, tuple_t **tupleOut)
+{
+    
+    unsigned int *value;
+    char* fileName;
+    char *page;
+    uint16_t pageId, offset;
+    int ret;
+    tuple_t *tuple;
+    table_node_t *tmpTbl = sql_cret_tbl_table_create_and_init("tmpInFunc");
+    
+    sprintf(fileName, "%s_%s_hash.idx", table->name, attrName);
+    ret = db__hash_idx_gets(fileName, attrName, value);
+    if(ret == 0){
+        printf("Fail in hash idx get tuple\n");
+        free(tmpTbl);
+        return ret;
+    }
+    
+    int valueSize = ret;
+    int i;
+    for(i = 0; i < valueSize; i++){
+        pageId = value[i];
+        i++;
+        offset = value[i];
+        
+        if (table->pageTable[pageId].valid_bit == 0) {
+            ret = db__table_info_page_fault_hdl(table, pageId, (char **)&page);
+            if (ret != BP_OK) goto fatal;
+        } else {
+            page = table->pageTable[pageId].page;
+        }
+        tuple = sql_tuple_create_and_init();
+        tuple->pageId = pageId;
+        tuple->offset = offset;
+        db__page_tuple_info_unpacked(table, tuple, &offset, page);
+        tmpTbl->add_tuple(tmpTbl, tuple);
+        
+    }
+    *tupleOut = tmpTbl->tuple_list_head;
+
+fatal:
+    free(value);
+    free(tmpTbl); 
+    return ret;
 }
 
 
