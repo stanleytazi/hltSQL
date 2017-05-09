@@ -6,7 +6,7 @@
 #include <pthread.h>
 
 #define CACHE_PAGE 1000
-#define PAGE_SIZE  4096
+#define PAGE_SIZE  65536
 struct page 
 {
 	int fd;			/* file that this page lives at */

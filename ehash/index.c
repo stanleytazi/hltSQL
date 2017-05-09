@@ -14,7 +14,7 @@
 #include <math.h>		/* for function log() defination */
 #include <limits.h>		/* for USHRT_MAX defination */
 
-#define TMPINDEXSLOTS 512
+#define TMPINDEXSLOTS 1024
 #define TMPINDEXLOADFACTOR 5
 #define FILL_FACTOR 0.8
 struct index
