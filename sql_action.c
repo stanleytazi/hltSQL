@@ -37,8 +37,7 @@ int sql_idx_get_tuple(bp_db_t *db, table_node_t *tbl, data_type_e dataType, int 
 int sql_idx_get_tuple_range(bp_db_t *db, table_node_t *tbl, var_node_t *start, var_node_t *end, tuple_t **tupleOut);
 //0508
 int sql_hash_idx_get_tuple();
-int sql_hash_idx_get_tuple_range();
-int sql_set_table_idx_hash();
+int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list);
 //0508
 bool sql_create_idx_stmt_handle(cret_idx_stmt_t *cretIdxStmt);
 
@@ -2775,13 +2774,53 @@ int sql_set_table_idx_tree(bp_db_t *db, table_node_t *tbl, col_node_t *col_list)
 // if start = NULL, comp_type = less than
 
 //0508
-int sql_set_table_idx_hash(){
+int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list){
+    char fileName[128];
+    char attrName[128]="";
+    char key[128]="";
+    char attrStr[64];
+    unsigned int value;// our hash value type is unsigned int
+    tuple_t *tuple = tbl->tuple_list_head;
+    attr_node_t *attr = NULL;
+    attr_node_header_t *attrHd = NULL;
+    col_node_t *col = col_list;
+    int ret;
+    while (col) {
+        attrHd = tbl->find_attr(tbl, (char *)col->name);
+        if (attrHd) {
+            strcat(attrName, col->name);
+        } else {
+            printf("fail to find all the ATTR In col_list\n");
+            return -1;
+        }
+        col = col->next;
+    }
+    sprintf(fileName, "%s_%s_hash.idx", tbl->name, attrName);
+    ret = db__hash_idx_craete(fileName);// create hash index
     
-    
-    
-    
-    
-    return 0;
+    if (ret != EH_OK) return ret;
+    while (tuple) {
+        col = col_list;
+        value = tuple->pageId*10000+tuple->offset;// value format = pageId*10000+offset
+        while (col) {
+            attr = tuple->find_attr_vals(tuple, (char *)col->name);
+            if (attr) {
+                sql_gen_key_string(attr, key);
+                strcat(key, attrStr);//??
+            } else {
+                strcat(key, "000");
+            }
+            col = col->next;
+        }
+        //address can be in-memory addr
+        printf("key = %s, value = %d\n", key, value);
+        ret = db__hash_idx_sets(fileName, key, value);//hashIdx.c set function
+        if (ret != EH_OK)
+            printf("insert to hash idx fails => \n\ttable:%s, key:%s, value:%d\n",
+                        tbl->name, key, value);
+        tuple = tuple->next;
+    }
+    return ret;
 }
 //0508
 
@@ -2934,9 +2973,6 @@ int sql_hash_idx_get_tuple(){
 }
 
 
-int sql_hash_idx_get_tuple_range(){
-    return 0;
-}
 //0508
 
 
