@@ -1,7 +1,7 @@
 
 
 
-CC = cc -g -O0
+CC = cc -g -O2
 LEX = flex
 YACC = bison
 CFLAGS = -DYYDEBUG=1

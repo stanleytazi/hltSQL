@@ -14,6 +14,14 @@
 
 #include "select_destroy.h"
 
+#ifdef __MACH__
+#include <mach/mach_time.h>
+#define CLOCK_REALTIME 0
+#define CLOCK_MONOTONIC 0
+#else
+#include<time.h>
+#endif
+
 #define MAX_STMT_NUM_SUPPORT 20
 #define MAX_IMPORT_FILE_NAME_LENGTH 100
 
@@ -187,6 +195,7 @@ int sql_idx_hash_cb(table_node_t *tbl, char *attrName, var_node_t *v, cmp_type_e
         printf("    Start get tuple\n");
         sql_hash_idx_get_tuple(tbl, attrName, v, outTpl);
     } 
+    return 0;
 }
 
 int sql_idx_tree_cb(table_node_t *tbl, char *attrName, var_node_t *v, cmp_type_e cmpType, tuple_t *inTpl, tuple_t **outTpl)
@@ -1308,10 +1317,39 @@ bool sql_insert_stmt_handle(insert_stmt_t *insr_stmt)
     return rtn;
     // check if NOT-NULL attr is NULL
 }
+#ifdef __MACH__
 
+int clock_gettime(int clk_id, struct timespec *t){
+    mach_timebase_info_data_t timebase;
+    mach_timebase_info(&timebase);
+    uint64_t time;
+    time = mach_absolute_time();
+    double nseconds = ((double)time * (double)timebase.numer)/((double)timebase.denom);
+    double seconds = ((double)time * (double)timebase.numer)/((double)timebase.denom * 1e9);
+    t->tv_sec = seconds;
+    t->tv_nsec = nseconds;
+    return 0;
+}
+
+#endif
+
+static double diff_in_second(struct timespec t1, struct timespec t2)
+{
+    struct timespec diff;
+    if (t2.tv_nsec-t1.tv_nsec < 0) {
+        diff.tv_sec  = t2.tv_sec - t1.tv_sec - 1;
+        diff.tv_nsec = t2.tv_nsec - t1.tv_nsec + 1000000000;
+    } else {
+        diff.tv_sec  = t2.tv_sec - t1.tv_sec;
+        diff.tv_nsec = t2.tv_nsec - t1.tv_nsec;
+    }
+    return (diff.tv_sec + diff.tv_nsec / 1000000000.0);
+}
 void sql_stmt_handle(stmt_node_t *stmt)
 {
     bool hdlPass = true;
+    struct timespec start, end;
+    double cpu_time1;
     if (stmt) {
         switch(stmt->type)
         {
@@ -1323,7 +1361,11 @@ void sql_stmt_handle(stmt_node_t *stmt)
             hdlPass = sql_insert_stmt_handle((insert_stmt_t *)(stmt->stmt_info));
             break;
         case STMT_TYPE_SELECT_TUPLE:
-            hdlPass = sql_select_stmt_handle((select_stmt_t *)(stmt->stmt_info));
+            clock_gettime(CLOCK_REALTIME, &start);
+            hdlPass = sql_select_stmt_handle((select_stmt_t *)(stmt->stmt_info));    
+            clock_gettime(CLOCK_REALTIME, &end);
+            cpu_time1 = diff_in_second(start, end);
+            printf("execution time = %lf\n", cpu_time1);
             break;
         case STMT_TYPE_CREATE_INDEX:
             hdlPass = sql_create_idx_stmt_handle((cret_idx_stmt_t *)(stmt->stmt_info));
@@ -1608,6 +1650,7 @@ stmt_node_t *sql_show_all_table(void)
     col_node_t col_node;//0509
     table_node_t *table = NULL;
     stmt_node_t *stmt = NULL;
+    memset(&col_node, 0, sizeof(col_node_t));
     for (i = 0; i < MAX_TABLE_ENTRY; i++) {
         table = table_list[i];
         while (table) {
