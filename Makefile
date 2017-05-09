@@ -21,7 +21,7 @@ endif
 
 EXE = hltsql
 
-OBJ := pmysql.tab.o pmysql.o sql_action.o dbwriter.o table.o treeIdx.o hashIdx.o cret_idx.o
+OBJ := pmysql.tab.o pmysql.o sql_action.o dbwriter.o table.o treeIdx.o hashIdx.o cret_idx.o select_destroy.o
 
 all: $(EXE)
 
@@ -46,12 +46,14 @@ hashIdx.o: hashIdx.c hashIdx.h libindex.a
 
 cret_idx.o: cret_idx.c cret_idx.h
 
+select_destroy.o: select_destroy.c select_destroy.h
+
 table.o: table.c 
 	${CC} -c $< 
 
 
 clean:
-	rm -f hltsql pmysql.tab.c pmysql.tab.h pmysql.c pmysql.tab.o pmysql.o pmysql.output sql_action.o table.o dbwriter.o treeIdx.o hashIdx.o cret_idx.o
+	rm -f hltsql pmysql.tab.c pmysql.tab.h pmysql.c pmysql.tab.o pmysql.o pmysql.output sql_action.o table.o dbwriter.o treeIdx.o hashIdx.o cret_idx.o  select_destroy.o
 
 .SUFFIXES:	.l .y .c
 	
