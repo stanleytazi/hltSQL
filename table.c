@@ -356,7 +356,18 @@ int db__table_info_page_read(table_node_t *tbl, const uint16_t pageId, void **pa
     psize = DB_PAGE_SIZE;
     offset = pageId * DB_PAGE_SIZE;
     ret = db__writer_read((bp__writer_t *)tbl, offset, &psize, page);
- 
+    if (ret == BP_EALLOC)
+    {
+        int i;
+        uint32_t pageNum = ntohl(*(uint32_t *)(tbl->pageTable[0].page + DB_PAGE_HEADER_SIZE));
+        for( i=1; i< pageNum && ret==BP_EALLOC;i++){
+            if (tbl->pageTable[i].valid_bit == 1 && (i!=pageId) 
+              && tbl->pageTable[i].page) {
+                free(tbl->pageTable[i].page);
+                ret = db__writer_read((bp__writer_t *)tbl, offset, &psize, page);
+            }
+        }
+    }
     return ret;
 }
 int db__table_info_page_fault_hdl(table_node_t *tbl, uint16_t id, char **page)
