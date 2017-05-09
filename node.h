@@ -123,6 +123,7 @@ struct __TABLE_NODE__ {
     db_page_t pageTable[MAX_PAGE_NUM_IN_TABLE];
     bptree_t btree[4];
     uint8_t btree_num;
+    uint8_t hash_num;//0509
     bool (*set_attr)(table_node_t *self, attr_node_header_t *attr_node_hdr);
     attr_node_header_t *(*find_attr)(table_node_t *self, char *attrName);
     bool (*chk_col_list)(table_node_t *self, col_node_t *col_list);

@@ -1,0 +1,7 @@
+Valid table name
+Valid attr list
+Valid qulifier
+type: int
+l_datatype = int
+r_datatype = int
+compare is right!

@@ -1203,6 +1203,8 @@ void sql_output_insert_result_to_file(insert_stmt_t *insr_stmt)
 stmt_node_t *sql_show_all_table(void)
 {
     int i = 0;
+    int j = 0;//0509
+    col_node_t col_node;//0509
     table_node_t *table = NULL;
     stmt_node_t *stmt = NULL;
     for (i = 0; i < MAX_TABLE_ENTRY; i++) {
@@ -1215,6 +1217,19 @@ stmt_node_t *sql_show_all_table(void)
             }
             db__table_info_update(table);
             db__table_info_all_pages_write(table);
+            ///////// initialize hash index
+            for(j=0; j<table->attr_num; j++){
+                col_node.name = table->attr[j]->name;
+                if(sql_set_table_idx_hash(table, &col_node)==EH_OK){
+                    printf("create and insert to hash index: %s_%s_hash.idx: succeed\n", table->name, col_node.name);
+                }
+                else{
+                    printf("create and insert to hash index: %s_%s_hash.idx:failed\n", table->name, col_node.name);
+                }
+            }
+            
+            
+            /////////0509
             table = table->next;
             printf("\n");
             
@@ -2675,7 +2690,7 @@ static void sql_recover_table_info(db_db_t *db)
     int i;
 
     //for (i = 0; i < db->tbl_num; i++) {
-    for (i = 0; i < 1; i++) {
+    for (i = 0; i < db->tbl_num; i++) {
         tblName = strdup(db->tbl[i].name);
         tbl = sql_cret_tbl_table_create_and_init(tblName);
         db__table_info_create(tbl);
@@ -2797,6 +2812,7 @@ int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list){
     sprintf(fileName, "%s_%s_hash.idx", tbl->name, attrName);
     ret = db__hash_idx_craete(fileName);// create hash index
     
+    
     if (ret != EH_OK) return ret;
     while (tuple) {
         col = col_list;
@@ -2805,7 +2821,7 @@ int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list){
             attr = tuple->find_attr_vals(tuple, (char *)col->name);
             if (attr) {
                 sql_gen_key_string(attr, key);
-                strcat(key, attrStr);//??
+                //strcat(key, attrStr);//??
             } else {
                 strcat(key, "000");
             }
@@ -2819,6 +2835,8 @@ int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list){
                         tbl->name, key, value);
         tuple = tuple->next;
     }
+    
+    
     return ret;
 }
 //0508

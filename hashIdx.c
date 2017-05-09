@@ -10,9 +10,13 @@ int db__hash_idx_craete(char *name){
     struct index *hash_idx;
     hash_idx = indexNew(name);
     if(hash_idx){
+        indexDump(hash_idx);
+        indexFree(hash_idx);//
+        printf("create hash index %s:succeed\n", name);
         return EH_OK;
     }
     else{
+        printf("create hash index %s:failed\n", name);
         return -1;
     }
 }
@@ -35,6 +39,8 @@ int db__hash_idx_sets(char *Idxname, char *key, int value){
             printf("insert to hash index succeed\n");
         }
     }
+    indexDump(hash_idx);
+    indexFree(hash_idx);//
     ret = EH_OK;
     return ret;
 }
