@@ -180,6 +180,13 @@ int sql_idx_full_scan_cb(table_node_t *tbl, char *attrName, var_node_t *cmp, cmp
     return 0;   
 }
 
+int sql_idx_hash_cb(table_node_t *tbl, char *attrName, var_node_t *v, cmp_type_e cmpType, tuple_t *inTpl, tuple_t **outTpl)
+{
+    if (cmpType == CMP_TYPE_EQUAL){
+        sql_hash_idx_get_tuple(tbl, attrName, v, outTpl);
+    } 
+}
+
 int sql_idx_tree_cb(table_node_t *tbl, char *attrName, var_node_t *v, cmp_type_e cmpType, tuple_t *inTpl, tuple_t **outTpl)
 {
     char fileName[128];
@@ -3395,7 +3402,7 @@ void sql_init()
     sql_index_cb[1] = sql_idx_tree_cb, 
     sql_index_cb[2] = sql_idx_tree_cb, 
     sql_index_cb[3] = sql_idx_tree_cb, 
-    sql_index_cb[4] = sql_idx_tree_cb,//should be hash 
+    sql_index_cb[4] = sql_idx_hash_cb,//should be hash 
     
     sprintf(intMAX, "%d", INT_MAX);
     sprintf(intMIN, "%d", INT_MIN);
