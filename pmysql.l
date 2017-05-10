@@ -210,7 +210,6 @@ STRAIGHT_JOIN	{ return STRAIGHT_JOIN; }
 TABLE	{ return TABLE; }
 TEMPORARY	{ return TEMPORARY; }
 TERMINATED	{ return TERMINATED; }
-TEXT	{ return TEXT; }
 THEN	{ return THEN; }
 TIME	{ return TIME; }
 TIMESTAMP	{ return TIMESTAMP; }

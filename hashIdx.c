@@ -13,7 +13,7 @@ int db__hash_idx_craete(char *name){
     if(hash_idx){
         indexDump(hash_idx);
         indexFree(hash_idx);//
-        printf("create hash index %s:succeed\n", name);
+        //printf("create hash index %s:succeed\n", name);
         return EH_OK;
     }
     else{
@@ -37,7 +37,7 @@ int db__hash_idx_sets(char* fileName, char *key, int value){
             return -1;
         }
         else{
-            printf("insert to hash index succeed\n");
+            //printf("insert to hash index succeed\n");
         }
     }
     ret = EH_OK;
@@ -64,12 +64,12 @@ int db__hash_idx_gets(const char *fileName, const char *key, unsigned int **valu
 	*value = malloc(sizeof(unsigned int) * num*2);
 	if(result)
 	{
-	    printf("Find %d tuples\n", num);
+	    //printf("Find %d tuples\n", num);
 		for(i=0; i<num; i++)
 		{
 		    (*value)[i*2] = result[i].d/10000;
 		    (*value)[i*2 +1] = result[i].d%10000;
-		    printf("tuple %d : %d-> (%d, %d) \n",i , result[i].d, (*value)[i*2], (*value)[i*2 +1]);
+		    //printf("tuple %d : %d-> (%d, %d) \n",i , result[i].d, (*value)[i*2], (*value)[i*2 +1]);
 		    assert((*value)[i*2 +1] < 4096);
 		}
 		free(result);

@@ -5,8 +5,8 @@
 #include <stdbool.h>		/* for type bool */
 #include <pthread.h>
 
-#define CACHE_PAGE 1000
-#define PAGE_SIZE  65536
+#define CACHE_PAGE (3000)
+#define PAGE_SIZE  (65536*4)
 struct page 
 {
 	int fd;			/* file that this page lives at */

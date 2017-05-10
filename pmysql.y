@@ -252,7 +252,6 @@ int yylex();
 %token TABLE
 %token TEMPORARY
 %token TEST_SEL
-%token TEXT
 %token TERMINATED
 %token THEN
 %token TIME

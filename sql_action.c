@@ -25,7 +25,7 @@
 #define MAX_STMT_NUM_SUPPORT 20
 #define MAX_IMPORT_FILE_NAME_LENGTH 100
 
-typedef bool (*sql_cmp_two_tuple)(tuple_t *new, tuple_t *exist, attr_node_header_t *attr);
+typedef bool (*sql_cmp_two_tuple)(table_node_t *tbl, tuple_t *new, tuple_t *exist, attr_node_header_t *attr);
 typedef int (*sql_idx_cb)(table_node_t *tbl, char *attrName, var_node_t *v, cmp_type_e cmptype, tuple_t *inTpl, tuple_t **outTpl);
 typedef void (*stmt_dstry_func)(stmt_node_t*);
 static table_node_t *table_list[MAX_TABLE_ENTRY] = { NULL };
@@ -166,7 +166,7 @@ int sql_idx_full_scan_cb(table_node_t *tbl, char *attrName, var_node_t *cmp, cmp
                 tuple = sql_tuple_create_and_init();
                 tuple->pageId = i;
                 tuple->offset = offset;
-                printf("(%d, %d)\n", i, offset);
+                //printf("(%d, %d)\n", i, offset);
                 db__page_tuple_info_unpacked(tbl, tuple, &offset, page);
                 //tbl->add_tuple(tbl, tuple);
                 *tupleTmp = tuple;
@@ -190,9 +190,9 @@ int sql_idx_full_scan_cb(table_node_t *tbl, char *attrName, var_node_t *cmp, cmp
 
 int sql_idx_hash_cb(table_node_t *tbl, char *attrName, var_node_t *v, cmp_type_e cmpType, tuple_t *inTpl, tuple_t **outTpl)
 {
-    printf("Entering hash call back func.\n");
+    //printf("Entering hash call back func.\n");
     if (cmpType == CMP_TYPE_EQUAL){
-        printf("    Start get tuple\n");
+        //printf("    Start get tuple\n");
         sql_hash_idx_get_tuple(tbl, attrName, v, outTpl);
     } 
     return 0;
@@ -236,12 +236,21 @@ int sql_sel_merge_tuple_for_or_cond(sel_rec_t *rec, table_node_t *tbl, tuple_t *
     tuple_t *t2 = list2;
     table_node_t *tmpTbl = sql_cret_tbl_table_create_and_init("tmp");
     tbl->tuple_list_head = list1;
-    
+    //int count =0, count1=0; 
+    tuple_t *tmp ;
     while (t2) {
-        if (!tbl->chk_duplc(tbl, t2)) // no duplicated
+        if (!tbl->chk_duplc(tbl, t2)) {
             tmpTbl->add_tuple(tmpTbl,t2);
+	    //count1++;
+    	    
+	    //printf("count1=%d   ", count1);
+	}
+	/*count++;
+	if(count==310)tmp=t2;
+    	printf("count=%d\n", count);*/
         t2 = t2->next;
     }
+    //printf("count=%d\n", count);
     if ( tmpTbl->tuple_list_head) {
         tmpTbl->tuple_list_tail->next = list1;
         *tupleOut = tmpTbl->tuple_list_head;
@@ -385,7 +394,7 @@ int sql_sel_qual_start(sel_rec_t *rec)
                 var_otr.type = attr_otr->header->data_type;  
                 var_otr.int_value = attr_otr->value->int_value;
                 var_otr.varchar_value = attr_otr->value->varchar_value;
-                sql_index_cb[IDX_CB_TYPE_EQUAL](rec->table[inrIdx], attrName, &var_otr, 4, NULL, &t_inr);
+		sql_index_cb[IDX_CB_TYPE_EQUAL](rec->table[inrIdx], attrName, &var_otr, 4, NULL, &t_inr);
                 if (t_inr) {
                     tuple_cnn_t *tail;
                     tplCnn = CALLOC_MEM(tuple_cnn_t, 1);
@@ -394,6 +403,14 @@ int sql_sel_qual_start(sel_rec_t *rec)
                     tplCnn->table = rec->table[otrIdx];
                     tplCnn->tuple = t_otr;
                     while (t_inr) {
+
+			// test inDemo DAY
+/*
+			attr_node_t *attrdemo = t_inr->find_attr_vals(t_inr, "freq");
+			if (attrdemo)
+				printf("val=%d\n", attrdemo->value->int_value);
+			else
+			   printf("no tuple\n");*/
                         *tplCnnTmp = CALLOC_MEM(tuple_cnn_t, 1);
                         CALLOC_CHK(*tplCnnTmp);
                         nextQualNum++;
@@ -407,11 +424,12 @@ int sql_sel_qual_start(sel_rec_t *rec)
                     tplCnn->nextRel = tplCnnInr;
                     tplCnn->siblHead = tplCnnInr;
                     tplCnn->siblTail = tail;
+		    tplCnnTmp = &tplCnnInr;
                     if (tplCnnInr)
                         tplCnnInr->prevRel = tplCnn;
                     sql_save_qual_tuple(rec, tplCnn);
                 } 
-            }
+		}
             t_otr = t_otr->next;
         }
     
@@ -695,7 +713,7 @@ bool sql_compare_two_attr_value(data_type_e type, attr_node_value_t *v1, attr_no
     }
     return rtn;
 }
-bool sql_compare_prikey_with_pkname(tuple_t *new_insr, tuple_t *old_insr, attr_node_header_t *pk_attr)
+bool sql_compare_prikey_with_pkname(table_node_t *tbl, tuple_t *new_insr, tuple_t *old_insr, attr_node_header_t *pk_attr)
 {
     attr_node_t *attr_new = new_insr->find_attr_vals(new_insr, pk_attr->name);   
     attr_node_t *attr_old = old_insr->find_attr_vals(old_insr, pk_attr->name); 
@@ -704,18 +722,18 @@ bool sql_compare_prikey_with_pkname(tuple_t *new_insr, tuple_t *old_insr, attr_n
         && attr_new->header->data_type == attr_old->header->data_type
         && sql_compare_two_attr_value(attr_new->header->data_type, attr_new->value, attr_old->value)) {
         if (pk_attr->next)
-            return sql_compare_prikey_with_pkname(new_insr, old_insr, pk_attr->next);
+            return sql_compare_prikey_with_pkname(tbl, new_insr, old_insr, pk_attr->next);
         else
             return true;
     }
     return false;
 }
 
-bool sql_compare_each_prikey(tuple_t *new, tuple_t *exist, attr_node_header_t *pk_attr)
+bool sql_compare_each_prikey(table_node_t *tbl, tuple_t *new, tuple_t *exist, attr_node_header_t *pk_attr)
 {
     int i;
-    for (i = 0; i < MAX_ATTR_NUM; i++) {
-        if (!sql_compare_prikey_with_pkname(new, exist, pk_attr+i))
+    for (i = 0; i < tbl->attr_num; i++) {
+        if (!sql_compare_prikey_with_pkname(tbl, new, exist, tbl->attr[i]))
             return false;
     }
     return true;
@@ -736,7 +754,7 @@ bool sql_is_dup_tuple_chk(table_node_t *table, tuple_t *new_tuple)
         cmp_arg = table->attr[0];
     }
     while (tuple_in_tbl) {
-        if (cmp_fun(new_tuple, tuple_in_tbl, cmp_arg))
+        if (cmp_fun(table, new_tuple, tuple_in_tbl, cmp_arg))
             return true;
         tuple_in_tbl = tuple_in_tbl->next;
     }
@@ -783,7 +801,7 @@ bool sql_check_data_validation(attr_node_header_t *attrHdr, var_node_t *dataInfo
     switch (dataInfo->type) 
     {
         case DATA_TYPE_VARCHAR:
-            return (dataInfo->varchar_len <= attrHdr->varchar_len);
+            //return (dataInfo->varchar_len <= attrHdr->varchar_len);
             break;
         case DATA_TYPE_INT:
         default:
@@ -1555,10 +1573,10 @@ expr_node_t *sql_expr_basic_data_node_create(data_type_e type, int int_val, char
 
 void sql_print_col_node(col_node_t *list)
 {
-    while (list) {
+    /*while (list) {
         printf("column name: %s\n", list->name);
         list = list->next;
-    }
+    }*/
 }
 void sql_print_table(table_node_t *table)
 {
@@ -2264,6 +2282,8 @@ bool sql_sel_collect_table(sel_rec_t *rec, select_table_node_t *tableList)
             rec->table[i] = table;
             i++;
             mapTblHd = &((*mapTblHd)->next);
+            //db__table_info_all_pages_read(table);
+            //sql_recover_table_info_tuple(table);
         } else {
             //ERROR
             return false;
@@ -2730,6 +2750,9 @@ void sql_transl_to_tbl_traverse_for_aggr(sel_rec_t *rec, char *tblInName, attr_n
         bool isPass = false;
         data_type_e dataType;
 
+	if (!tupleAdd)
+            goto GEN_TUPLE;
+		
         if (isPrintAll) {
             aggrValue = rec->tupleNum;
             isPass = true;
@@ -2750,7 +2773,10 @@ void sql_transl_to_tbl_traverse_for_aggr(sel_rec_t *rec, char *tblInName, attr_n
             repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;// should be previos level node
             if (isRep) {
                 tupleTgt = tupleDeep->tuple;   
-                attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+                //attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName));
+		attr_node_t *attr=(tupleTgt->find_attr_vals(tupleTgt, attrName));
+                if(attr)
+		    attrVal = attr->value;
             }
         }
         while (tupleNum > 0) {
@@ -2767,13 +2793,18 @@ void sql_transl_to_tbl_traverse_for_aggr(sel_rec_t *rec, char *tblInName, attr_n
                 repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;
                 if (isRep) {
                     tupleTgt = tupleDeep->tuple;   
-                    attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+                    //attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+		    attr_node_t *attr=(tupleTgt->find_attr_vals(tupleTgt, attrName));
+                    if(attr)
+		        attrVal = attr->value;
                 }
             }
             if (!isRep) {
                 tupleTgt = tupleDeep->tuple;
-                attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
-                tupleDeep = tupleDeep->siblNext;
+		attr_node_t *attr=(tupleTgt->find_attr_vals(tupleTgt, attrName));
+                if(attr)
+		    attrVal = attr->value;
+		tupleDeep = tupleDeep->siblNext;
             }
             if (aggreType == AGGR_TYPE_COUNT) {
                 if (attrVal) {//NULL value  can't be count
@@ -2782,8 +2813,10 @@ void sql_transl_to_tbl_traverse_for_aggr(sel_rec_t *rec, char *tblInName, attr_n
                 }
             } else if (aggreType == AGGR_TYPE_SUM) {
                 if (dataType == DATA_TYPE_INT) {
-                    aggrValue+=attrVal->int_value;
-                    isPass  = true;
+                    if (attrVal){
+		    	aggrValue+=attrVal->int_value;
+			isPass  = true;
+		   }
                 }
                 else
                     printf("not support aggr sum for this type\n");
@@ -2831,7 +2864,10 @@ void sql_transl_to_tbl_traverse(sel_rec_t *rec, char *tblInName, attr_node_heade
             repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;// should be previos level node
             if (isRep) {
                 tupleTgt = tupleDeep->tuple;   
-                attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+                //attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+		attr_node_t *attr=(tupleTgt->find_attr_vals(tupleTgt, attrName));
+                if(attr)
+		    attrVal = attr->value;
             }
         }
         while (tupleAdd) {
@@ -2850,12 +2886,18 @@ void sql_transl_to_tbl_traverse(sel_rec_t *rec, char *tblInName, attr_node_heade
                 repNum = (tupleRec->nextQualNum > 0) ? tupleRec->nextQualNum : 1;
                 if (isRep) {
                     tupleTgt = tupleDeep->tuple;   
-                    attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+                    //attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+		    attr_node_t *attr=(tupleTgt->find_attr_vals(tupleTgt, attrName));
+                    if(attr)
+		      attrVal = attr->value;
                 }
             }
             if (!isRep) {
                 tupleTgt = tupleDeep->tuple;
-                attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+                //attrVal = (tupleTgt->find_attr_vals(tupleTgt, attrName))->value;
+		attr_node_t *attr=(tupleTgt->find_attr_vals(tupleTgt, attrName));
+                if(attr)
+		    attrVal = attr->value;
                 tupleDeep = tupleDeep->siblNext;
             }
             attrNd = CALLOC_MEM(attr_node_t, 1);
@@ -3123,7 +3165,7 @@ void sql_recover_table_info_tuple(table_node_t *tbl)
             tuple = sql_tuple_create_and_init();
             tuple->pageId = i;
             tuple->offset = offset;
-            printf("(%d, %d)\n", i, offset);
+            //printf("(%d, %d)\n", i, offset);
             db__page_tuple_info_unpacked(tbl, tuple, &offset, page);
             tbl->add_tuple(tbl, tuple);
             tupleNum++;
@@ -3292,7 +3334,7 @@ int sql_set_table_idx_hash(table_node_t *tbl, col_node_t *col_list){
             col = col->next;
         }
         //address can be in-memory addr
-        printf("key = %s, value = %d\n", key, value);
+        //printf("key = %s, value = %d\n", key, value);
         ret = db__hash_idx_sets(fileName, key, value);//hashIdx.c set function
         if (ret != EH_OK)
             printf("insert to hash idx fails => \n\ttable:%s, key:%s, value:%d\n",
@@ -3481,13 +3523,13 @@ int sql_hash_idx_get_tuple(table_node_t *table, char * attrName, var_node_t* has
         free(tmpTbl);
         return ret;
     } else if (ret == 0) {
-        printf("No Tuple whih the value [ %s ] in the table [%s] : [%s]\n", key, table->name, attrName);
-        tupleOut = NULL;
+        //printf("No Tuple whih the value [ %s ] in the table [%s] : [%s]\n", key, table->name, attrName);
+        *tupleOut = NULL;
         free(tmpTbl);
         return ret;
     }
-    else printf("Get hash tuple succed\n");
-    printf("%d Tuples whih the value [ %s ] in the table [%s] : [%s]\n",ret/2 ,key, table->name, attrName);
+    //else printf("Get hash tuple succed\n");
+    //printf("%d Tuples whih the value [ %s ] in the table [%s] : [%s]\n",ret/2 ,key, table->name, attrName);
     int valueSize = ret;
     int i;
     for(i = 0; i < valueSize; i++){
